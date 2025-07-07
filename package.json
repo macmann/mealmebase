@@ -1,0 +1,22 @@
+{
+  "name": "ragchatbot",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@langchain/openai": "^0.5.18",
+    "@qdrant/js-client-rest": "^1.14.1",
+    "axios": "^1.10.0",
+    "body-parser": "^2.2.0",
+    "dotenv": "^17.0.1",
+    "express": "^5.1.0",
+    "langchain": "^0.3.29",
+    "qdrant-client": "^0.0.1"
+  }
+}
