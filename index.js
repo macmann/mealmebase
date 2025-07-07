@@ -118,6 +118,14 @@ function chatHtml() {
   `;
 }
 
+function homeHtml() {
+  return `
+    <h1>RAG Chatbot Demo</h1>
+    <p><a href="/admin">Admin</a></p>
+    <p><a href="/chat">Chat</a></p>
+  `;
+}
+
 app.get('/admin', (req, res) => {
   res.send(adminHtml());
 });
@@ -145,6 +153,10 @@ app.post('/chat', async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: 'Failed to generate answer' });
   }
+});
+
+app.get('/', (req, res) => {
+  res.send(homeHtml());
 });
 
 const PORT = process.env.PORT || 3000;
