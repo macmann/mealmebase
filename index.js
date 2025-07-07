@@ -53,7 +53,10 @@ async function askLLM(context, question) {
       model: 'gpt-3.5-turbo',
       messages: [
         { role: 'system', content: config.instruction || 'You are a helpful assistant.' },
-        { role: 'user', content: `${context}\n\n${question}` },
+        {
+          role: 'user',
+          content: context ? `${context}\n\n${question}` : question,
+        },
       ],
       temperature: config.temperature,
       top_p: config.topP,
