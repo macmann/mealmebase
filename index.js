@@ -75,6 +75,10 @@ function pageTemplate(content) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css" />
         <title>RAG Chatbot</title>
+        <style>
+          .chat-box { min-height: 300px; max-height: 60vh; overflow-y: auto; }
+          .card { margin-top: 1rem; }
+        </style>
       </head>
       <body>
         <section class="section">
@@ -89,46 +93,50 @@ function pageTemplate(content) {
 
 function adminHtml() {
   return pageTemplate(`
-    <h1 class="title">Admin</h1>
-    <form id="upload-form">
-      <div class="field">
-        <label class="label">Instruction</label>
-        <div class="control">
-          <input class="input" id="instruction" value="${config.instruction}" />
-        </div>
+    <h1 class="title has-text-centered">Admin</h1>
+    <div class="card">
+      <div class="card-content">
+        <form id="upload-form">
+          <div class="field">
+            <label class="label">Instruction</label>
+            <div class="control">
+              <input class="input" id="instruction" value="${config.instruction}" />
+            </div>
+          </div>
+          <div class="field">
+            <label class="label">Temperature</label>
+            <div class="control">
+              <input class="input" id="temperature" type="number" step="0.1" value="${config.temperature}" />
+            </div>
+          </div>
+          <div class="field">
+            <label class="label">Top P</label>
+            <div class="control">
+              <input class="input" id="topP" type="number" step="0.1" value="${config.topP}" />
+            </div>
+          </div>
+          <div class="field">
+            <label class="label">Top K</label>
+            <div class="control">
+              <input class="input" id="topK" type="number" value="${config.topK}" />
+            </div>
+          </div>
+          <div class="field">
+            <label class="label">Document</label>
+            <div class="control">
+              <input class="input" type="file" id="file" accept=".txt" />
+            </div>
+          </div>
+          <div class="field">
+            <div class="control">
+              <button class="button is-primary" type="submit">Upload</button>
+            </div>
+          </div>
+          <p class="has-text-weight-semibold" id="status"></p>
+        </form>
+        <p class="has-text-centered"><a href="/chat">Go to Chat</a></p>
       </div>
-      <div class="field">
-        <label class="label">Temperature</label>
-        <div class="control">
-          <input class="input" id="temperature" type="number" step="0.1" value="${config.temperature}" />
-        </div>
-      </div>
-      <div class="field">
-        <label class="label">Top P</label>
-        <div class="control">
-          <input class="input" id="topP" type="number" step="0.1" value="${config.topP}" />
-        </div>
-      </div>
-      <div class="field">
-        <label class="label">Top K</label>
-        <div class="control">
-          <input class="input" id="topK" type="number" value="${config.topK}" />
-        </div>
-      </div>
-      <div class="field">
-        <label class="label">Document</label>
-        <div class="control">
-          <input class="input" type="file" id="file" accept=".txt" />
-        </div>
-      </div>
-      <div class="field">
-        <div class="control">
-          <button class="button is-primary" type="submit">Upload</button>
-        </div>
-      </div>
-    </form>
-    <p class="has-text-weight-semibold" id="status"></p>
-    <p><a href="/chat">Go to Chat</a></p>
+    </div>
     <script>
       document.getElementById('upload-form').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -150,36 +158,45 @@ function adminHtml() {
 
 function chatHtml() {
   return pageTemplate(`
-    <h1 class="title">Chatbot</h1>
-    <div id="messages" class="content" style="min-height: 200px;"></div>
-    <div class="field has-addons">
-      <div class="control is-expanded">
-        <input class="input" id="msg" placeholder="Ask something..." />
-      </div>
-      <div class="control">
-        <button class="button is-link" id="send">Send</button>
+    <h1 class="title has-text-centered">Chatbot</h1>
+    <div class="card">
+      <div class="card-content">
+        <div id="messages" class="content chat-box"></div>
+        <div class="field has-addons">
+          <div class="control is-expanded">
+            <input class="input" id="msg" placeholder="Ask something..." />
+          </div>
+          <div class="control">
+            <button class="button is-link" id="send">Send</button>
+          </div>
+        </div>
+        <p class="has-text-centered"><a href="/admin">Back to Admin</a></p>
       </div>
     </div>
-    <p><a href="/admin">Back to Admin</a></p>
     <script>
-        document.getElementById('send').addEventListener('click', async () => {
-          const msgEl = document.getElementById('msg');
-          const msg = msgEl.value;
-          if(!msg) return;
-          msgEl.value = '';
+        function appendMessage(role, text) {
+          const cls = role === 'user' ? 'is-link' : 'is-primary';
           const chat = document.getElementById('messages');
-          chat.innerHTML += '<p><strong>You:</strong> '+msg+'</p>';
+          chat.innerHTML += '<article class="message ' + cls + ' message-row"><div class="message-body"><strong>' + (role === 'user' ? 'You' : 'Bot') + ':</strong> ' + text + '</div></article>';
+          chat.scrollTop = chat.scrollHeight;
+        }
+        async function sendMessage() {
+          const msgEl = document.getElementById('msg');
+          const msg = msgEl.value.trim();
+          if (!msg) return;
+          msgEl.value = '';
+          appendMessage('user', msg);
           try {
             const res = await fetch('/chat', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ message: msg }) });
             const data = await res.json();
-            if (!res.ok || data.error) {
-              throw new Error(data.error);
-            }
-            chat.innerHTML += '<p><strong>Bot:</strong> '+data.answer+'</p>';
+            if (!res.ok || data.error) throw new Error(data.error);
+            appendMessage('bot', data.answer);
           } catch (e) {
-            chat.innerHTML += '<p><strong>Bot:</strong> Failed to generate answer</p>';
+            appendMessage('bot', 'Failed to generate answer');
           }
-        });
+        }
+        document.getElementById('send').addEventListener('click', sendMessage);
+        document.getElementById('msg').addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); sendMessage(); }});
     </script>
   `);
 }
