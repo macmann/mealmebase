@@ -98,7 +98,7 @@ function adminHtml() {
         <form id="upload-form" class="space-y-4">
           <div>
             <label class="block font-semibold mb-1">Instruction</label>
-            <div id="instruction-editor" class="h-32">${config.instruction}</div>
+            <div id="instruction-editor" class="h-32"></div>
           </div>
           <div>
             <label class="block font-semibold mb-1">Temperature</label>
@@ -138,6 +138,7 @@ function adminHtml() {
       pdfjsLib.GlobalWorkerOptions.workerSrc =
         'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.worker.min.js';
       const quill = new Quill('#instruction-editor', { theme: 'snow' });
+      quill.root.innerHTML = ${JSON.stringify(config.instruction)};
 
       async function fileToText(file) {
         if (!file) return '';
