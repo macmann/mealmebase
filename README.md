@@ -2,6 +2,8 @@
 
 This project is a simple RAG (Retrieval Augmented Generation) chatbot demo built with Node.js and Express. The frontend is styled using [Tailwind CSS](https://tailwindcss.com) for a clean and modern look.
 
+The admin interface allows uploading knowledge sources used by the chatbot. You can now upload plain text **or** PDF documents.
+
 ## Setup
 
 1. Install dependencies:
