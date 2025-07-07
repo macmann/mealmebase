@@ -66,19 +66,69 @@ async function askLLM(context, question) {
   return res.data.choices[0].message.content.trim();
 }
 
-function adminHtml() {
+function pageTemplate(content) {
   return `
-    <h1>Admin</h1>
+    <!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css" />
+        <title>RAG Chatbot</title>
+      </head>
+      <body>
+        <section class="section">
+          <div class="container">
+            ${content}
+          </div>
+        </section>
+      </body>
+    </html>
+  `;
+}
+
+function adminHtml() {
+  return pageTemplate(`
+    <h1 class="title">Admin</h1>
     <form id="upload-form">
-      Instruction:<br/><input id="instruction" value="${config.instruction}"/><br/>
-      Temperature:<br/><input id="temperature" type="number" step="0.1" value="${config.temperature}"/><br/>
-      Top P:<br/><input id="topP" type="number" step="0.1" value="${config.topP}"/><br/>
-      Top K:<br/><input id="topK" type="number" value="${config.topK}"/><br/>
-      Document:<br/><input type="file" id="file" accept=".txt"/><br/><br/>
-      <button type="submit">Upload</button>
+      <div class="field">
+        <label class="label">Instruction</label>
+        <div class="control">
+          <input class="input" id="instruction" value="${config.instruction}" />
+        </div>
+      </div>
+      <div class="field">
+        <label class="label">Temperature</label>
+        <div class="control">
+          <input class="input" id="temperature" type="number" step="0.1" value="${config.temperature}" />
+        </div>
+      </div>
+      <div class="field">
+        <label class="label">Top P</label>
+        <div class="control">
+          <input class="input" id="topP" type="number" step="0.1" value="${config.topP}" />
+        </div>
+      </div>
+      <div class="field">
+        <label class="label">Top K</label>
+        <div class="control">
+          <input class="input" id="topK" type="number" value="${config.topK}" />
+        </div>
+      </div>
+      <div class="field">
+        <label class="label">Document</label>
+        <div class="control">
+          <input class="input" type="file" id="file" accept=".txt" />
+        </div>
+      </div>
+      <div class="field">
+        <div class="control">
+          <button class="button is-primary" type="submit">Upload</button>
+        </div>
+      </div>
     </form>
-    <p id="status"></p>
-    <a href="/chat">Go to Chat</a>
+    <p class="has-text-weight-semibold" id="status"></p>
+    <p><a href="/chat">Go to Chat</a></p>
     <script>
       document.getElementById('upload-form').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -95,16 +145,22 @@ function adminHtml() {
         document.getElementById('status').innerText = res.ok ? 'Uploaded!' : 'Upload failed';
       });
     </script>
-  `;
+  `);
 }
 
 function chatHtml() {
-  return `
-    <h1>Chatbot</h1>
-    <div id="messages"></div>
-    <input id="msg" placeholder="Ask something..."/>
-    <button id="send">Send</button>
-    <a href="/admin">Back to Admin</a>
+  return pageTemplate(`
+    <h1 class="title">Chatbot</h1>
+    <div id="messages" class="content" style="min-height: 200px;"></div>
+    <div class="field has-addons">
+      <div class="control is-expanded">
+        <input class="input" id="msg" placeholder="Ask something..." />
+      </div>
+      <div class="control">
+        <button class="button is-link" id="send">Send</button>
+      </div>
+    </div>
+    <p><a href="/admin">Back to Admin</a></p>
     <script>
         document.getElementById('send').addEventListener('click', async () => {
           const msgEl = document.getElementById('msg');
@@ -112,28 +168,30 @@ function chatHtml() {
           if(!msg) return;
           msgEl.value = '';
           const chat = document.getElementById('messages');
-          chat.innerHTML += '<p><b>You:</b> '+msg+'</p>';
+          chat.innerHTML += '<p><strong>You:</strong> '+msg+'</p>';
           try {
             const res = await fetch('/chat', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ message: msg }) });
             const data = await res.json();
             if (!res.ok || data.error) {
               throw new Error(data.error);
             }
-            chat.innerHTML += '<p><b>Bot:</b> '+data.answer+'</p>';
+            chat.innerHTML += '<p><strong>Bot:</strong> '+data.answer+'</p>';
           } catch (e) {
-            chat.innerHTML += '<p><b>Bot:</b> Failed to generate answer</p>';
+            chat.innerHTML += '<p><strong>Bot:</strong> Failed to generate answer</p>';
           }
         });
     </script>
-  `;
+  `);
 }
 
 function homeHtml() {
-  return `
-    <h1>RAG Chatbot Demo</h1>
-    <p><a href="/admin">Admin</a></p>
-    <p><a href="/chat">Chat</a></p>
-  `;
+  return pageTemplate(`
+    <h1 class="title">RAG Chatbot Demo</h1>
+    <div class="buttons">
+      <a class="button is-link" href="/admin">Admin</a>
+      <a class="button is-primary" href="/chat">Chat</a>
+    </div>
+  `);
 }
 
 app.get('/admin', (req, res) => {
