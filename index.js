@@ -144,10 +144,6 @@ app.get('/chat', (req, res) => {
   res.send(chatHtml());
 });
 
-app.get('/', (req, res) => {
-  res.send(homeHtml());
-});
-
 app.post('/chat', async (req, res) => {
   const { message } = req.body;
   try {
@@ -157,6 +153,10 @@ app.post('/chat', async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: 'Failed to generate answer' });
   }
+});
+
+app.get('/', (req, res) => {
+  res.send(homeHtml());
 });
 
 const PORT = process.env.PORT || 3000;
