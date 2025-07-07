@@ -113,7 +113,7 @@ function adminHtml() {
         </div>
         <div>
           <label class="block font-semibold mb-1">Document</label>
-          <input class="w-full border rounded px-3 py-2" type="file" id="file" accept=".txt" />
+          <input class="w-full border rounded px-3 py-2" type="file" id="file" accept=".txt,.pdf" />
         </div>
         <div>
           <button class="bg-blue-500 text-white px-4 py-2 rounded" type="submit">Upload</button>
@@ -122,11 +122,31 @@ function adminHtml() {
       </form>
       <p class="text-center mt-4"><a class="text-blue-500 underline" href="/chat">Go to Chat</a></p>
     </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.min.js"></script>
     <script>
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.worker.min.js';
+
+      async function fileToText(file) {
+        if (!file) return '';
+        if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+          const typedArray = new Uint8Array(await file.arrayBuffer());
+          const pdf = await pdfjsLib.getDocument(typedArray).promise;
+          let txt = '';
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const content = await page.getTextContent();
+            txt += content.items.map(it => it.str).join(' ') + '\n';
+          }
+          return txt;
+        }
+        return await file.text();
+      }
+
       document.getElementById('upload-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const f = document.getElementById('file').files[0];
-        const text = f ? await f.text() : '';
+        const text = await fileToText(f);
         const body = {
           instruction: document.getElementById('instruction').value,
           temperature: parseFloat(document.getElementById('temperature').value),
@@ -134,7 +154,11 @@ function adminHtml() {
           topK: parseInt(document.getElementById('topK').value, 10),
           text,
         };
-        const res = await fetch('/admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const res = await fetch('/admin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
         document.getElementById('status').innerText = res.ok ? 'Uploaded!' : 'Upload failed';
       });
     </script>
