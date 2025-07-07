@@ -92,40 +92,52 @@ function pageTemplate(content) {
 
 function adminHtml() {
   return pageTemplate(`
-    <h1 class="text-2xl font-bold text-center mb-6">Admin</h1>
-    <div class="bg-white p-6 rounded shadow">
-      <form id="upload-form" class="space-y-4">
-        <div>
-          <label class="block font-semibold mb-1">Instruction</label>
-          <input class="w-full border rounded px-3 py-2" id="instruction" value="${config.instruction}" />
+    <h1 class="text-2xl font-bold text-center mb-6">Admin & Test</h1>
+    <div class="flex flex-col md:flex-row gap-6">
+      <div class="bg-white p-6 rounded shadow flex-1">
+        <form id="upload-form" class="space-y-4">
+          <div>
+            <label class="block font-semibold mb-1">Instruction</label>
+            <div id="instruction-editor" class="h-32">${config.instruction}</div>
+          </div>
+          <div>
+            <label class="block font-semibold mb-1">Temperature</label>
+            <input class="w-full border rounded px-3 py-2" id="temperature" type="number" step="0.1" value="${config.temperature}" />
+          </div>
+          <div>
+            <label class="block font-semibold mb-1">Top P</label>
+            <input class="w-full border rounded px-3 py-2" id="topP" type="number" step="0.1" value="${config.topP}" />
+          </div>
+          <div>
+            <label class="block font-semibold mb-1">Top K</label>
+            <input class="w-full border rounded px-3 py-2" id="topK" type="number" value="${config.topK}" />
+          </div>
+          <div>
+            <label class="block font-semibold mb-1">Document</label>
+            <input class="w-full border rounded px-3 py-2" type="file" id="file" accept=".txt,.pdf" />
+          </div>
+          <div>
+            <button class="bg-blue-500 text-white px-4 py-2 rounded" type="submit">Upload</button>
+          </div>
+          <p class="font-semibold" id="status"></p>
+        </form>
+      </div>
+      <div class="bg-white p-6 rounded shadow w-full md:w-1/2">
+        <h2 class="text-xl font-semibold mb-4">Test Chat</h2>
+        <div id="messages" class="chat-box space-y-2 h-60"></div>
+        <div class="flex mt-4">
+          <input class="flex-1 border rounded-l px-3 py-2" id="msg" placeholder="Ask something..." />
+          <button class="bg-blue-500 text-white px-4 py-2 rounded-r" id="send">Send</button>
         </div>
-        <div>
-          <label class="block font-semibold mb-1">Temperature</label>
-          <input class="w-full border rounded px-3 py-2" id="temperature" type="number" step="0.1" value="${config.temperature}" />
-        </div>
-        <div>
-          <label class="block font-semibold mb-1">Top P</label>
-          <input class="w-full border rounded px-3 py-2" id="topP" type="number" step="0.1" value="${config.topP}" />
-        </div>
-        <div>
-          <label class="block font-semibold mb-1">Top K</label>
-          <input class="w-full border rounded px-3 py-2" id="topK" type="number" value="${config.topK}" />
-        </div>
-        <div>
-          <label class="block font-semibold mb-1">Document</label>
-          <input class="w-full border rounded px-3 py-2" type="file" id="file" accept=".txt,.pdf" />
-        </div>
-        <div>
-          <button class="bg-blue-500 text-white px-4 py-2 rounded" type="submit">Upload</button>
-        </div>
-        <p class="font-semibold" id="status"></p>
-      </form>
-      <p class="text-center mt-4"><a class="text-blue-500 underline" href="/chat">Go to Chat</a></p>
+      </div>
     </div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.min.js"></script>
+    <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+    <script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
     <script>
       pdfjsLib.GlobalWorkerOptions.workerSrc =
         'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.worker.min.js';
+      const quill = new Quill('#instruction-editor', { theme: 'snow' });
 
       async function fileToText(file) {
         if (!file) return '';
@@ -148,7 +160,7 @@ function adminHtml() {
         const f = document.getElementById('file').files[0];
         const text = await fileToText(f);
         const body = {
-          instruction: document.getElementById('instruction').value,
+          instruction: quill.root.innerHTML,
           temperature: parseFloat(document.getElementById('temperature').value),
           topP: parseFloat(document.getElementById('topP').value),
           topK: parseInt(document.getElementById('topK').value, 10),
@@ -161,6 +173,36 @@ function adminHtml() {
         });
         document.getElementById('status').innerText = res.ok ? 'Uploaded!' : 'Upload failed';
       });
+
+      function appendMessage(role, text) {
+        const cls = role === 'user' ? 'bg-blue-100' : 'bg-green-100';
+        const chat = document.getElementById('messages');
+        chat.innerHTML += '<div class="' + cls + ' rounded p-2"><strong>' + (role === 'user' ? 'You' : 'Bot') + ':</strong> ' + text + '</div>';
+        chat.scrollTop = chat.scrollHeight;
+      }
+
+      async function sendMessage() {
+        const msgEl = document.getElementById('msg');
+        const msg = msgEl.value.trim();
+        if (!msg) return;
+        msgEl.value = '';
+        appendMessage('user', msg);
+        try {
+          const res = await fetch('/chat', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ message: msg })
+          });
+          const data = await res.json();
+          if (!res.ok || data.error) throw new Error(data.error);
+          appendMessage('bot', data.answer);
+        } catch (e) {
+          appendMessage('bot', 'Failed to generate answer');
+        }
+      }
+
+      document.getElementById('send').addEventListener('click', sendMessage);
+      document.getElementById('msg').addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); sendMessage(); }});
     </script>
   `);
 }
