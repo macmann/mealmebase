@@ -1,6 +1,6 @@
 # MealMeBase RAG Chatbot
 
-This project is a simple RAG (Retrieval Augmented Generation) chatbot demo built with Node.js and Express. The frontend is styled using the [Bulma](https://bulma.io) CSS framework for a clean and professional look.
+This project is a simple RAG (Retrieval Augmented Generation) chatbot demo built with Node.js and Express. The frontend is styled using [Tailwind CSS](https://tailwindcss.com) for a clean and modern look.
 
 ## Setup
 

@@ -73,16 +73,15 @@ function pageTemplate(content) {
       <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css" />
+        <script src="https://cdn.tailwindcss.com"></script>
         <title>RAG Chatbot</title>
         <style>
           .chat-box { min-height: 300px; max-height: 60vh; overflow-y: auto; }
-          .card { margin-top: 1rem; }
         </style>
       </head>
-      <body>
-        <section class="section">
-          <div class="container">
+      <body class="bg-gray-100">
+        <section class="py-8">
+          <div class="max-w-xl mx-auto">
             ${content}
           </div>
         </section>
@@ -93,49 +92,35 @@ function pageTemplate(content) {
 
 function adminHtml() {
   return pageTemplate(`
-    <h1 class="title has-text-centered">Admin</h1>
-    <div class="card">
-      <div class="card-content">
-        <form id="upload-form">
-          <div class="field">
-            <label class="label">Instruction</label>
-            <div class="control">
-              <input class="input" id="instruction" value="${config.instruction}" />
-            </div>
-          </div>
-          <div class="field">
-            <label class="label">Temperature</label>
-            <div class="control">
-              <input class="input" id="temperature" type="number" step="0.1" value="${config.temperature}" />
-            </div>
-          </div>
-          <div class="field">
-            <label class="label">Top P</label>
-            <div class="control">
-              <input class="input" id="topP" type="number" step="0.1" value="${config.topP}" />
-            </div>
-          </div>
-          <div class="field">
-            <label class="label">Top K</label>
-            <div class="control">
-              <input class="input" id="topK" type="number" value="${config.topK}" />
-            </div>
-          </div>
-          <div class="field">
-            <label class="label">Document</label>
-            <div class="control">
-              <input class="input" type="file" id="file" accept=".txt" />
-            </div>
-          </div>
-          <div class="field">
-            <div class="control">
-              <button class="button is-primary" type="submit">Upload</button>
-            </div>
-          </div>
-          <p class="has-text-weight-semibold" id="status"></p>
-        </form>
-        <p class="has-text-centered"><a href="/chat">Go to Chat</a></p>
-      </div>
+    <h1 class="text-2xl font-bold text-center mb-6">Admin</h1>
+    <div class="bg-white p-6 rounded shadow">
+      <form id="upload-form" class="space-y-4">
+        <div>
+          <label class="block font-semibold mb-1">Instruction</label>
+          <input class="w-full border rounded px-3 py-2" id="instruction" value="${config.instruction}" />
+        </div>
+        <div>
+          <label class="block font-semibold mb-1">Temperature</label>
+          <input class="w-full border rounded px-3 py-2" id="temperature" type="number" step="0.1" value="${config.temperature}" />
+        </div>
+        <div>
+          <label class="block font-semibold mb-1">Top P</label>
+          <input class="w-full border rounded px-3 py-2" id="topP" type="number" step="0.1" value="${config.topP}" />
+        </div>
+        <div>
+          <label class="block font-semibold mb-1">Top K</label>
+          <input class="w-full border rounded px-3 py-2" id="topK" type="number" value="${config.topK}" />
+        </div>
+        <div>
+          <label class="block font-semibold mb-1">Document</label>
+          <input class="w-full border rounded px-3 py-2" type="file" id="file" accept=".txt" />
+        </div>
+        <div>
+          <button class="bg-blue-500 text-white px-4 py-2 rounded" type="submit">Upload</button>
+        </div>
+        <p class="font-semibold" id="status"></p>
+      </form>
+      <p class="text-center mt-4"><a class="text-blue-500 underline" href="/chat">Go to Chat</a></p>
     </div>
     <script>
       document.getElementById('upload-form').addEventListener('submit', async (e) => {
@@ -158,26 +143,20 @@ function adminHtml() {
 
 function chatHtml() {
   return pageTemplate(`
-    <h1 class="title has-text-centered">Chatbot</h1>
-    <div class="card">
-      <div class="card-content">
-        <div id="messages" class="content chat-box"></div>
-        <div class="field has-addons">
-          <div class="control is-expanded">
-            <input class="input" id="msg" placeholder="Ask something..." />
-          </div>
-          <div class="control">
-            <button class="button is-link" id="send">Send</button>
-          </div>
-        </div>
-        <p class="has-text-centered"><a href="/admin">Back to Admin</a></p>
+    <h1 class="text-2xl font-bold text-center mb-6">Chatbot</h1>
+    <div class="bg-white p-6 rounded shadow">
+      <div id="messages" class="chat-box space-y-2"></div>
+      <div class="flex mt-4">
+        <input class="flex-1 border rounded-l px-3 py-2" id="msg" placeholder="Ask something..." />
+        <button class="bg-blue-500 text-white px-4 py-2 rounded-r" id="send">Send</button>
       </div>
+      <p class="text-center mt-4"><a class="text-blue-500 underline" href="/admin">Back to Admin</a></p>
     </div>
     <script>
         function appendMessage(role, text) {
-          const cls = role === 'user' ? 'is-link' : 'is-primary';
+          const cls = role === 'user' ? 'bg-blue-100' : 'bg-green-100';
           const chat = document.getElementById('messages');
-          chat.innerHTML += '<article class="message ' + cls + ' message-row"><div class="message-body"><strong>' + (role === 'user' ? 'You' : 'Bot') + ':</strong> ' + text + '</div></article>';
+          chat.innerHTML += '<div class="' + cls + ' rounded p-2"><strong>' + (role === 'user' ? 'You' : 'Bot') + ':</strong> ' + text + '</div>';
           chat.scrollTop = chat.scrollHeight;
         }
         async function sendMessage() {
@@ -203,10 +182,10 @@ function chatHtml() {
 
 function homeHtml() {
   return pageTemplate(`
-    <h1 class="title">RAG Chatbot Demo</h1>
-    <div class="buttons">
-      <a class="button is-link" href="/admin">Admin</a>
-      <a class="button is-primary" href="/chat">Chat</a>
+    <h1 class="text-2xl font-bold mb-6 text-center">RAG Chatbot Demo</h1>
+    <div class="flex justify-center space-x-4">
+      <a class="bg-blue-500 text-white px-4 py-2 rounded" href="/admin">Admin</a>
+      <a class="bg-green-500 text-white px-4 py-2 rounded" href="/chat">Chat</a>
     </div>
   `);
 }
