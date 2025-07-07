@@ -103,17 +103,24 @@ function chatHtml() {
     <button id="send">Send</button>
     <a href="/admin">Back to Admin</a>
     <script>
-      document.getElementById('send').addEventListener('click', async () => {
-        const msgEl = document.getElementById('msg');
-        const msg = msgEl.value;
-        if(!msg) return;
-        msgEl.value = '';
-        const chat = document.getElementById('messages');
-        chat.innerHTML += '<p><b>You:</b> '+msg+'</p>';
-        const res = await fetch('/chat', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ message: msg }) });
-        const data = await res.json();
-        chat.innerHTML += '<p><b>Bot:</b> '+data.answer+'</p>';
-      });
+        document.getElementById('send').addEventListener('click', async () => {
+          const msgEl = document.getElementById('msg');
+          const msg = msgEl.value;
+          if(!msg) return;
+          msgEl.value = '';
+          const chat = document.getElementById('messages');
+          chat.innerHTML += '<p><b>You:</b> '+msg+'</p>';
+          try {
+            const res = await fetch('/chat', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ message: msg }) });
+            const data = await res.json();
+            if (!res.ok || data.error) {
+              throw new Error(data.error);
+            }
+            chat.innerHTML += '<p><b>Bot:</b> '+data.answer+'</p>';
+          } catch (e) {
+            chat.innerHTML += '<p><b>Bot:</b> Failed to generate answer</p>';
+          }
+        });
     </script>
   `;
 }
