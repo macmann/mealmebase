@@ -363,4 +363,51 @@ if (process.env.TELEGRAM_BOT_TOKEN) {
 } else {
   console.log('TELEGRAM_BOT_TOKEN not set, skipping Telegram bot startup');
 }
+
+// --- Viber Bot Integration ---
+if (process.env.VIBER_AUTH_TOKEN) {
+  const VIBER_API = 'https://chatapi.viber.com/pa';
+
+  app.post('/viber/webhook', async (req, res) => {
+    const { event, message, sender } = req.body;
+    if (event === 'message' && message && sender && message.text) {
+      const text = message.text.trim();
+      try {
+        const context = await searchDocs(text);
+        const answer = await askLLM(context, text);
+        await axios.post(`${VIBER_API}/send_message`, {
+          receiver: sender.id,
+          type: 'text',
+          text: answer,
+        }, { headers: { 'X-Viber-Auth-Token': process.env.VIBER_AUTH_TOKEN } });
+      } catch (e) {
+        console.error('Viber bot error:', e.response ? e.response.data : e);
+        await axios.post(`${VIBER_API}/send_message`, {
+          receiver: sender.id,
+          type: 'text',
+          text: 'Failed to generate answer',
+        }, { headers: { 'X-Viber-Auth-Token': process.env.VIBER_AUTH_TOKEN } });
+      }
+    }
+    res.sendStatus(200);
+  });
+
+  async function setViberWebhook() {
+    if (!process.env.VIBER_WEBHOOK_URL) return;
+    try {
+      await axios.post(`${VIBER_API}/set_webhook`, {
+        url: `${process.env.VIBER_WEBHOOK_URL}/viber/webhook`,
+      }, { headers: { 'X-Viber-Auth-Token': process.env.VIBER_AUTH_TOKEN } });
+      console.log('Viber webhook set');
+    } catch (e) {
+      console.error('Failed to set Viber webhook:', e.response ? e.response.data : e);
+    }
+  }
+
+  setViberWebhook();
+  console.log('Viber bot started');
+} else {
+  console.log('VIBER_AUTH_TOKEN not set, skipping Viber bot startup');
+}
+// --- End of Viber Bot Integration ---
 // --- End of Telegram Bot Integration ---
