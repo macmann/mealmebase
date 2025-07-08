@@ -17,7 +17,9 @@ The admin interface allows uploading knowledge sources used by the chatbot. You 
    VERIFY_TOKEN=your_own_verify_token
    QDRANT_URL=http://localhost:6333
    OPENAI_API_KEY=your_openai_api_key
+   TELEGRAM_BOT_TOKEN=your_telegram_bot_token
    ```
+   You can copy `.env.example` as a starting point and fill in your keys.
    The `OPENAI_API_KEY` is required for generating embeddings and chatting with the OpenAI API.
 
 3. Start the server:
