@@ -5,7 +5,7 @@ const { CohereEmbeddings } = require('@langchain/cohere');
 const { QdrantClient } = require('@qdrant/js-client-rest');
 
 const app = express();
-app.use(express.json()); // Only use express.json, no body-parser!
+app.use(express.json());
 
 const config = {
   instruction: '',
@@ -27,9 +27,9 @@ async function ensureCollection() {
 
 async function ingestDocument(text) {
   try {
-      const embeddings = new CohereEmbeddings({
-        apiKey: process.env.COHERE_API_KEY,
-        model: "embed-v4.0", // or "embed-multilingual-v3.0" if you want multi-language support
+    const embeddings = new CohereEmbeddings({
+      apiKey: process.env.COHERE_API_KEY,
+      model: "embed-v4.0",
     });
     await ensureCollection();
     const vector = await embeddings.embedQuery(text);
@@ -48,7 +48,7 @@ async function searchDocs(query) {
   try {
     const embeddings = new CohereEmbeddings({
       apiKey: process.env.COHERE_API_KEY,
-      model: "embed-v4.0", // or "embed-multilingual-v3.0" if you want multi-language support
+      model: "embed-v4.0",
     });
     const vector = await embeddings.embedQuery(query);
     const results = await qdrant.search(collection, {
@@ -86,6 +86,7 @@ async function askLLM(context, question) {
   }
 }
 
+// ----- UI Layout -----
 function pageTemplate(content) {
   return `
     <!DOCTYPE html>
@@ -96,14 +97,12 @@ function pageTemplate(content) {
         <script src="https://cdn.tailwindcss.com"></script>
         <title>RAG Chatbot</title>
         <style>
-          .chat-box { min-height: 300px; max-height: 60vh; overflow-y: auto; }
+          .chat-box { min-height: 0; max-height: 100%; }
         </style>
       </head>
-      <body class="bg-gray-100">
-        <section class="py-8">
-          <div class="max-w-xl mx-auto">
-            ${content}
-          </div>
+      <body class="bg-gray-100 min-h-screen">
+        <section class="min-h-screen w-full flex flex-col px-2 py-4">
+          <div class="flex-1 flex flex-col w-full">${content}</div>
         </section>
       </body>
     </html>
@@ -112,45 +111,59 @@ function pageTemplate(content) {
 
 function adminHtml() {
   return pageTemplate(`
-    <h1 class="text-2xl font-bold text-center mb-6">Admin & Test</h1>
-    <div class="flex flex-col md:flex-row gap-6">
-      <div class="bg-white p-6 rounded shadow flex-1">
-        <form id="upload-form" class="space-y-4">
-          <div>
-            <label class="block font-semibold mb-1">Instruction</label>
-            <div id="instruction-editor" class="h-32"></div>
+    <h1 class="text-3xl font-bold text-center mb-6">Admin & Test</h1>
+    <div class="flex flex-col md:flex-row gap-6 flex-1 w-full">
+      <div class="bg-white p-6 rounded shadow flex-1 flex flex-col min-w-[340px] md:min-w-[380px] w-full">
+        <form id="upload-form" class="space-y-4 flex-1 flex flex-col w-full">
+          <label class="block font-semibold mb-1">Instruction</label>
+          <div class="mb-8">
+            <div id="instruction-editor" class="h-40 w-full border rounded"></div>
           </div>
-          <div>
+          <div class="w-full">
             <label class="block font-semibold mb-1">Temperature</label>
             <input class="w-full border rounded px-3 py-2" id="temperature" type="number" step="0.1" value="${config.temperature}" />
           </div>
-          <div>
+          <div class="w-full">
             <label class="block font-semibold mb-1">Top P</label>
             <input class="w-full border rounded px-3 py-2" id="topP" type="number" step="0.1" value="${config.topP}" />
           </div>
-          <div>
+          <div class="w-full">
             <label class="block font-semibold mb-1">Top K</label>
             <input class="w-full border rounded px-3 py-2" id="topK" type="number" value="${config.topK}" />
           </div>
-          <div>
+          <div class="w-full">
             <label class="block font-semibold mb-1">Document</label>
             <input class="w-full border rounded px-3 py-2" type="file" id="file" accept=".txt,.pdf" />
           </div>
-          <div>
-            <button class="bg-blue-500 text-white px-4 py-2 rounded" type="submit">Upload</button>
+          <div class="w-full">
+            <button class="bg-blue-500 text-white px-4 py-2 rounded w-full" type="submit">Upload</button>
           </div>
           <p class="font-semibold" id="status"></p>
         </form>
       </div>
-      <div class="bg-white p-6 rounded shadow w-full md:w-1/2">
+      <div class="bg-white p-6 rounded shadow flex flex-col flex-1 min-h-[500px] w-full">
         <h2 class="text-xl font-semibold mb-4">Test Chat</h2>
-        <div id="messages" class="chat-box space-y-2 h-60"></div>
-        <div class="flex mt-4">
-          <input class="flex-1 border rounded-l px-3 py-2" id="msg" placeholder="Ask something..." />
-          <button class="bg-blue-500 text-white px-4 py-2 rounded-r" id="send">Send</button>
+        <div id="messages" class="chat-box flex-1 overflow-y-auto space-y-2 mb-4"></div>
+        <div class="flex gap-2">
+          <input class="flex-1 border rounded-l px-3 py-3" id="msg" placeholder="Ask something..." />
+          <button class="bg-blue-500 text-white px-5 py-3 rounded-r" id="send">Send</button>
         </div>
       </div>
     </div>
+    <style>
+      #instruction-editor, .ql-container, .ql-editor {
+        width: 100% !important;
+        min-width: 0 !important;
+        box-sizing: border-box;
+      }
+      .ql-container {
+        min-height: 8rem;
+      }
+      /* Add extra spacing if you want even more separation */
+      .mb-8 {
+        margin-bottom: 2rem !important;
+      }
+    </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.min.js"></script>
     <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
     <script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
@@ -230,53 +243,57 @@ function adminHtml() {
 
 function chatHtml() {
   return pageTemplate(`
-    <h1 class="text-2xl font-bold text-center mb-6">Chatbot</h1>
-    <div class="bg-white p-6 rounded shadow">
-      <div id="messages" class="chat-box space-y-2"></div>
-      <div class="flex mt-4">
-        <input class="flex-1 border rounded-l px-3 py-2" id="msg" placeholder="Ask something..." />
-        <button class="bg-blue-500 text-white px-4 py-2 rounded-r" id="send">Send</button>
+    <h1 class="text-3xl font-bold text-center mb-8">Chatbot</h1>
+    <div class="bg-white rounded shadow p-4 flex flex-col h-[75vh] w-full">
+      <div id="messages" class="chat-box flex-1 overflow-y-auto space-y-2 mb-4"></div>
+      <div class="flex gap-2">
+        <input class="flex-1 border rounded-l px-3 py-3" id="msg" placeholder="Ask something..." />
+        <button class="bg-blue-500 text-white px-5 py-3 rounded-r" id="send">Send</button>
       </div>
       <p class="text-center mt-4"><a class="text-blue-500 underline" href="/admin">Back to Admin</a></p>
     </div>
+    <style>
+      .chat-box { min-height: 0; max-height: 100%; }
+    </style>
     <script>
-        function appendMessage(role, text) {
-          const cls = role === 'user' ? 'bg-blue-100' : 'bg-green-100';
-          const chat = document.getElementById('messages');
-          chat.innerHTML += '<div class="' + cls + ' rounded p-2"><strong>' + (role === 'user' ? 'You' : 'Bot') + ':</strong> ' + text + '</div>';
-          chat.scrollTop = chat.scrollHeight;
+      function appendMessage(role, text) {
+        const cls = role === 'user' ? 'bg-blue-100' : 'bg-green-100';
+        const chat = document.getElementById('messages');
+        chat.innerHTML += '<div class="' + cls + ' rounded p-2"><strong>' + (role === 'user' ? 'You' : 'Bot') + ':</strong> ' + text + '</div>';
+        chat.scrollTop = chat.scrollHeight;
+      }
+      async function sendMessage() {
+        const msgEl = document.getElementById('msg');
+        const msg = msgEl.value.trim();
+        if (!msg) return;
+        msgEl.value = '';
+        appendMessage('user', msg);
+        try {
+          const res = await fetch('/chat', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ message: msg }) });
+          const data = await res.json();
+          if (!res.ok || data.error) throw new Error(data.error);
+          appendMessage('bot', data.answer);
+        } catch (e) {
+          appendMessage('bot', 'Failed to generate answer');
         }
-        async function sendMessage() {
-          const msgEl = document.getElementById('msg');
-          const msg = msgEl.value.trim();
-          if (!msg) return;
-          msgEl.value = '';
-          appendMessage('user', msg);
-          try {
-            const res = await fetch('/chat', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ message: msg }) });
-            const data = await res.json();
-            if (!res.ok || data.error) throw new Error(data.error);
-            appendMessage('bot', data.answer);
-          } catch (e) {
-            appendMessage('bot', 'Failed to generate answer');
-          }
-        }
-        document.getElementById('send').addEventListener('click', sendMessage);
-        document.getElementById('msg').addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); sendMessage(); }});
+      }
+      document.getElementById('send').addEventListener('click', sendMessage);
+      document.getElementById('msg').addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); sendMessage(); }});
     </script>
   `);
 }
 
 function homeHtml() {
   return pageTemplate(`
-    <h1 class="text-2xl font-bold mb-6 text-center">RAG Chatbot Demo</h1>
-    <div class="flex justify-center space-x-4">
+    <h1 class="text-3xl font-bold mb-8 text-center">RAG Chatbot Demo</h1>
+    <div class="flex justify-center space-x-4 w-full">
       <a class="bg-blue-500 text-white px-4 py-2 rounded" href="/admin">Admin</a>
       <a class="bg-green-500 text-white px-4 py-2 rounded" href="/chat">Chat</a>
     </div>
   `);
 }
 
+// ---- Routes ----
 app.get('/admin', (req, res) => {
   res.send(adminHtml());
 });
