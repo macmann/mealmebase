@@ -335,3 +335,27 @@ app.get('/', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log('Server running on port', PORT));
+
+// --- Telegram Bot Integration ---
+if (process.env.TELEGRAM_BOT_TOKEN) {
+  const TelegramBot = require('node-telegram-bot-api');
+  const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
+
+  bot.on('message', async (msg) => {
+    const chatId = msg.chat.id;
+    const text = msg.text?.trim();
+    if (!text) return;
+    try {
+      const context = await searchDocs(text);
+      const answer = await askLLM(context, text);
+      await bot.sendMessage(chatId, answer);
+    } catch (e) {
+      console.error('Telegram bot error:', e);
+      await bot.sendMessage(chatId, 'Failed to generate answer');
+    }
+  });
+
+  console.log('Telegram bot started');
+} else {
+  console.log('TELEGRAM_BOT_TOKEN not set, skipping Telegram bot startup');
+}
