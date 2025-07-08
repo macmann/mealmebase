@@ -1,12 +1,11 @@
 require('dotenv').config();
 const express = require('express');
-const bodyParser = require('body-parser');
 const axios = require('axios');
-const { OpenAIEmbeddings } = require('@langchain/openai');
+const { CohereEmbeddings } = require('@langchain/cohere');
 const { QdrantClient } = require('@qdrant/js-client-rest');
 
 const app = express();
-app.use(bodyParser.json());
+app.use(express.json()); // Only use express.json, no body-parser!
 
 const config = {
   instruction: '',
@@ -22,48 +21,69 @@ async function ensureCollection() {
   try {
     await qdrant.createCollection(collection, { vectors: { size: 1536, distance: 'Cosine' } });
   } catch (e) {
-    // Collection probably exists
+    // Ignore if already exists
   }
 }
 
 async function ingestDocument(text) {
-  const embeddings = new OpenAIEmbeddings({ apiKey: process.env.OPENAI_API_KEY });
-  await ensureCollection();
-  const vector = await embeddings.embedQuery(text);
-  await qdrant.upsert(collection, {
-    points: [{ id: Date.now(), vector, payload: { text } }],
-  });
+  try {
+      const embeddings = new CohereEmbeddings({
+        apiKey: process.env.COHERE_API_KEY,
+        model: "embed-v4.0", // or "embed-multilingual-v3.0" if you want multi-language support
+    });
+    await ensureCollection();
+    const vector = await embeddings.embedQuery(text);
+    await qdrant.upsert(collection, {
+      points: [{ id: Date.now(), vector, payload: { text } }],
+    });
+    console.log('Ingested document:', text.slice(0, 40) + '...');
+    return true;
+  } catch (e) {
+    console.error('Ingest error:', e);
+    return false;
+  }
 }
 
 async function searchDocs(query) {
-  const embeddings = new OpenAIEmbeddings({ apiKey: process.env.OPENAI_API_KEY });
-  const vector = await embeddings.embedQuery(query);
-  const results = await qdrant.search(collection, {
-    vector,
-    limit: config.topK,
-    with_payload: true,
-  });
-  return results.map((r) => r.payload.text).join('\n');
+  try {
+    const embeddings = new CohereEmbeddings({
+      apiKey: process.env.COHERE_API_KEY,
+      model: "embed-v4.0", // or "embed-multilingual-v3.0" if you want multi-language support
+    });
+    const vector = await embeddings.embedQuery(query);
+    const results = await qdrant.search(collection, {
+      vector,
+      limit: config.topK,
+      with_payload: true,
+    });
+    console.log('Search returned', results.length, 'results');
+    return results.map((r) => r.payload.text).join('\n');
+  } catch (e) {
+    console.error('Search error:', e);
+    return '';
+  }
 }
 
 async function askLLM(context, question) {
-  const res = await axios.post(
-    'https://api.openai.com/v1/chat/completions',
-    {
-      model: 'gpt-3.5-turbo',
-      messages: [
-        { role: 'system', content: config.instruction || 'You are a helpful assistant.' },
-        {
-          role: 'user',
-          content: context ? `${context}\n\n${question}` : question,
-        },
-      ],
-      temperature: config.temperature,
-      top_p: config.topP,
-    },
-    { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` } },
-  );
-  return res.data.choices[0].message.content.trim();
+  try {
+    const res = await axios.post(
+      'https://api.openai.com/v1/chat/completions',
+      {
+        model: 'gpt-4.1-mini',
+        messages: [
+          { role: 'system', content: config.instruction || 'You are a helpful assistant.' },
+          { role: 'user', content: context ? `${context}\n\n${question}` : question },
+        ],
+        temperature: config.temperature,
+        top_p: config.topP,
+      },
+      { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` } }
+    );
+    return res.data.choices[0].message.content.trim();
+  } catch (e) {
+    console.error('LLM error:', e.response ? e.response.data : e);
+    return 'Sorry, could not generate an answer.';
+  }
 }
 
 function pageTemplate(content) {
@@ -149,7 +169,7 @@ function adminHtml() {
           for (let i = 1; i <= pdf.numPages; i++) {
             const page = await pdf.getPage(i);
             const content = await page.getTextContent();
-            txt += content.items.map(it => it.str).join(' ') + '\n';
+            txt += content.items.map(it => it.str).join(' ') + '\\n';
           }
           return txt;
         }
@@ -262,12 +282,16 @@ app.get('/admin', (req, res) => {
 });
 
 app.post('/admin', async (req, res) => {
+  console.log('ADMIN POST', req.body);
   const { instruction, temperature, topP, topK, text } = req.body;
   if (instruction !== undefined) config.instruction = instruction;
   if (!isNaN(temperature)) config.temperature = temperature;
   if (!isNaN(topP)) config.topP = topP;
   if (!isNaN(topK)) config.topK = topK;
-  if (text) await ingestDocument(text);
+  if (text) {
+    const ok = await ingestDocument(text);
+    if (!ok) return res.status(500).json({ error: 'Ingest failed.' });
+  }
   res.json({ status: 'ok' });
 });
 
@@ -276,12 +300,14 @@ app.get('/chat', (req, res) => {
 });
 
 app.post('/chat', async (req, res) => {
+  console.log('CHAT POST', req.body);
   const { message } = req.body;
   try {
     const context = await searchDocs(message);
     const answer = await askLLM(context, message);
     res.json({ answer });
   } catch (e) {
+    console.error('Chat error:', e);
     res.status(500).json({ error: 'Failed to generate answer' });
   }
 });
