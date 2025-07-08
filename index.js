@@ -30,7 +30,7 @@ async function ensureCollection() {
   }
 }
 
-async function ingestDocument(text) {
+async function ingestDocument(text, name) {
   try {
     const embeddings = new CohereEmbeddings({
       apiKey: process.env.COHERE_API_KEY,
@@ -39,7 +39,7 @@ async function ingestDocument(text) {
     await ensureCollection();
     const vector = await embeddings.embedQuery(text);
     await qdrant.upsert(collection, {
-      points: [{ id: Date.now(), vector, payload: { text } }],
+      points: [{ id: Date.now() + Math.floor(Math.random() * 1e6), vector, payload: { text, name } }],
     });
     console.log('Ingested document:', text.slice(0, 40) + '...');
     return true;
@@ -66,6 +66,28 @@ async function searchDocs(query) {
   } catch (e) {
     console.error('Search error:', e);
     return '';
+  }
+}
+
+async function listDocs() {
+  await ensureCollection();
+  const docs = [];
+  let offset = undefined;
+  do {
+    const res = await qdrant.scroll(collection, { limit: 50, offset, with_payload: true, with_vector: false });
+    docs.push(...res.points.map(p => ({ id: p.id, name: p.payload?.name || 'Document' })));
+    offset = res.next_page_offset;
+  } while (offset != null);
+  return docs;
+}
+
+async function removeDoc(id) {
+  try {
+    await qdrant.delete(collection, { points: [id] });
+    return true;
+  } catch (e) {
+    console.error('Delete error:', e);
+    return false;
   }
 }
 
@@ -137,14 +159,16 @@ function adminHtml() {
             <input class="w-full border rounded px-3 py-2" id="topK" type="number" value="${config.topK}" />
           </div>
           <div class="w-full">
-            <label class="block font-semibold mb-1">Document</label>
-            <input class="w-full border rounded px-3 py-2" type="file" id="file" accept=".txt,.pdf" />
+            <label class="block font-semibold mb-1">Documents</label>
+            <input class="w-full border rounded px-3 py-2" type="file" id="file" accept=".txt,.pdf" multiple />
           </div>
           <div class="w-full">
             <button class="bg-blue-500 text-white px-4 py-2 rounded w-full" type="submit">Upload</button>
           </div>
           <p class="font-semibold" id="status"></p>
         </form>
+        <h2 class="text-lg font-semibold mt-6">Existing Documents</h2>
+        <div id="docs" class="mt-2 space-y-2"></div>
       </div>
       <div class="bg-white p-6 rounded shadow flex flex-col flex-1 min-h-[500px] w-full">
         <h2 class="text-xl font-semibold mb-4">Test Chat</h2>
@@ -195,14 +219,18 @@ function adminHtml() {
 
       document.getElementById('upload-form').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const f = document.getElementById('file').files[0];
-        const text = await fileToText(f);
+        const files = [...document.getElementById('file').files];
+        const docs = [];
+        for (const f of files) {
+          const text = await fileToText(f);
+          docs.push({ name: f.name, text });
+        }
         const body = {
           instruction: quill.root.innerHTML,
           temperature: parseFloat(document.getElementById('temperature').value),
           topP: parseFloat(document.getElementById('topP').value),
           topK: parseInt(document.getElementById('topK').value, 10),
-          text,
+          files: docs,
         };
         const res = await fetch('/admin', {
           method: 'POST',
@@ -210,6 +238,7 @@ function adminHtml() {
           body: JSON.stringify(body),
         });
         document.getElementById('status').innerText = res.ok ? 'Uploaded!' : 'Upload failed';
+        if (res.ok) loadDocs();
       });
 
       function appendMessage(role, text) {
@@ -241,6 +270,31 @@ function adminHtml() {
 
       document.getElementById('send').addEventListener('click', sendMessage);
       document.getElementById('msg').addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); sendMessage(); }});
+
+      async function loadDocs() {
+        const res = await fetch('/docs');
+        if (!res.ok) return;
+        const docs = await res.json();
+        const container = document.getElementById('docs');
+        container.innerHTML = '';
+        docs.forEach(d => {
+          const div = document.createElement('div');
+          div.className = 'flex justify-between items-center border rounded p-2';
+          div.innerHTML = '<span>' + d.name + '</span>' +
+            '<button data-id="' + d.id + '" class="delete bg-red-500 text-white px-2 rounded">Delete</button>';
+          container.appendChild(div);
+        });
+      }
+
+      document.getElementById('docs').addEventListener('click', async (e) => {
+        if (e.target.classList.contains('delete')) {
+          const id = e.target.getAttribute('data-id');
+          const res = await fetch('/docs/' + id, { method: 'DELETE' });
+          if (res.ok) loadDocs();
+        }
+      });
+
+      loadDocs();
     </script>
   `);
 }
@@ -304,16 +358,39 @@ app.get('/admin', (req, res) => {
 
 app.post('/admin', async (req, res) => {
   console.log('ADMIN POST', req.body);
-  const { instruction, temperature, topP, topK, text } = req.body;
+  const { instruction, temperature, topP, topK, files = [], text } = req.body;
   if (instruction !== undefined) config.instruction = instruction;
   if (!isNaN(temperature)) config.temperature = temperature;
   if (!isNaN(topP)) config.topP = topP;
   if (!isNaN(topK)) config.topK = topK;
-  if (text) {
-    const ok = await ingestDocument(text);
+  if (files && Array.isArray(files)) {
+    for (const f of files) {
+      if (!f || !f.text) continue;
+      const ok = await ingestDocument(f.text, f.name);
+      if (!ok) return res.status(500).json({ error: 'Ingest failed.' });
+    }
+  } else if (text) {
+    const ok = await ingestDocument(text, 'Document');
     if (!ok) return res.status(500).json({ error: 'Ingest failed.' });
   }
   res.json({ status: 'ok' });
+});
+
+app.get('/docs', async (req, res) => {
+  try {
+    const docs = await listDocs();
+    res.json(docs);
+  } catch (e) {
+    console.error('List docs error:', e);
+    res.status(500).json({ error: 'Failed to list docs' });
+  }
+});
+
+app.delete('/docs/:id', async (req, res) => {
+  const id = req.params.id;
+  const ok = await removeDoc(id);
+  if (ok) res.json({ status: 'ok' });
+  else res.status(500).json({ error: 'Delete failed' });
 });
 
 app.get('/chat', (req, res) => {
