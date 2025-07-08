@@ -161,7 +161,7 @@ function adminHtml() {
           </div>
           <div class="w-full">
             <label class="block font-semibold mb-1">Documents</label>
-            <input class="w-full border rounded px-3 py-2" type="file" id="file" accept=".txt,.pdf" multiple />
+            <input class="w-full border rounded px-3 py-2" type="file" id="file" accept=".txt,.pdf,.json" multiple />
           </div>
           <div class="w-full">
             <button class="bg-blue-500 text-white px-4 py-2 rounded w-full" type="submit">Upload</button>
@@ -214,6 +214,16 @@ function adminHtml() {
             txt += content.items.map(it => it.str).join(' ') + '\\n';
           }
           return txt;
+        }
+        if (file.type === 'application/json' || file.name.toLowerCase().endsWith('.json')) {
+          const raw = await file.text();
+          try {
+            const data = JSON.parse(raw);
+            return JSON.stringify(data, null, 2);
+          } catch (e) {
+            console.error('Invalid JSON file', e);
+            return raw;
+          }
         }
         return await file.text();
       }
@@ -367,7 +377,17 @@ app.post('/admin', async (req, res) => {
   if (files && Array.isArray(files)) {
     for (const f of files) {
       if (!f || !f.text) continue;
-      const ok = await ingestDocument(f.text, f.name);
+      let text = f.text;
+      if (f.name && f.name.toLowerCase().endsWith('.json')) {
+        try {
+          const data = JSON.parse(text);
+          text = JSON.stringify(data);
+        } catch (e) {
+          console.error('Invalid JSON file', f.name, e);
+          return res.status(400).json({ error: 'Invalid JSON file' });
+        }
+      }
+      const ok = await ingestDocument(text, f.name);
       if (!ok) return res.status(500).json({ error: 'Ingest failed.' });
     }
   } else if (text) {
