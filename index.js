@@ -83,7 +83,8 @@ async function listDocs() {
 
 async function removeDoc(id) {
   try {
-    await qdrant.delete(collection, { points: [id] });
+    const pointId = typeof id === 'string' ? Number(id) : id;
+    await qdrant.delete(collection, { points: [pointId] });
     return true;
   } catch (e) {
     console.error('Delete error:', e);
@@ -387,7 +388,8 @@ app.get('/docs', async (req, res) => {
 });
 
 app.delete('/docs/:id', async (req, res) => {
-  const id = req.params.id;
+  const idParam = req.params.id;
+  const id = Number(idParam);
   const ok = await removeDoc(id);
   if (ok) res.json({ status: 'ok' });
   else res.status(500).json({ error: 'Delete failed' });
