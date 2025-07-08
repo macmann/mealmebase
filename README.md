@@ -18,9 +18,12 @@ The admin interface allows uploading knowledge sources used by the chatbot. You 
    QDRANT_URL=http://localhost:6333
    OPENAI_API_KEY=your_openai_api_key
    TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+   VIBER_AUTH_TOKEN=your_viber_auth_token
+   VIBER_WEBHOOK_URL=https://your-domain.com
    ```
    You can copy `.env.example` as a starting point and fill in your keys.
    The `OPENAI_API_KEY` is required for generating embeddings and chatting with the OpenAI API.
+   The `VIBER_AUTH_TOKEN` and `VIBER_WEBHOOK_URL` are used to configure the Viber webhook integration.
 
 3. Start the server:
    ```bash
