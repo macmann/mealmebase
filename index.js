@@ -14,9 +14,14 @@ const config = {
   topK: 3,
 };
 
-const qdrant = new QdrantClient({ url: process.env.QDRANT_URL || 'http://localhost:6333' });
+// --------- Qdrant Client Setup ---------
+const qdrant = new QdrantClient({
+  url: process.env.QDRANT_HOST || 'http://localhost:6333',
+  apiKey: process.env.QDRANT_API_KEY, // only needed for Qdrant Cloud
+});
 const collection = 'docs';
 
+// ------- Qdrant Collection Helper -------
 async function ensureCollection() {
   try {
     await qdrant.createCollection(collection, { vectors: { size: 1536, distance: 'Cosine' } });
@@ -159,7 +164,6 @@ function adminHtml() {
       .ql-container {
         min-height: 8rem;
       }
-      /* Add extra spacing if you want even more separation */
       .mb-8 {
         margin-bottom: 2rem !important;
       }
@@ -359,3 +363,4 @@ if (process.env.TELEGRAM_BOT_TOKEN) {
 } else {
   console.log('TELEGRAM_BOT_TOKEN not set, skipping Telegram bot startup');
 }
+// --- End of Telegram Bot Integration ---
