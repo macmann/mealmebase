@@ -199,7 +199,7 @@ function adminHtml() {
           </div>
           <div class="w-full">
             <label class="block font-semibold mb-1">Documents</label>
-            <input class="w-full border rounded px-3 py-2" type="file" id="file" accept=".txt,.pdf,.json" multiple />
+            <input class="w-full border rounded px-3 py-2" type="file" id="file" accept=".txt,.pdf,.json,.csv" multiple />
           </div>
           <div class="w-full">
             <button class="bg-blue-500 text-white px-4 py-2 rounded w-full" type="submit">Upload</button>
@@ -262,6 +262,9 @@ function adminHtml() {
             console.error('Invalid JSON file', e);
             return raw;
           }
+        }
+        if (file.type === 'text/csv' || file.name.toLowerCase().endsWith('.csv')) {
+          return await file.text();
         }
         return await file.text();
       }

@@ -2,7 +2,7 @@
 
 This project is a simple RAG (Retrieval Augmented Generation) chatbot demo built with Node.js and Express. The frontend is styled using [Tailwind CSS](https://tailwindcss.com) for a clean and modern look.
 
-The admin interface allows uploading knowledge sources used by the chatbot. You can now upload plain text, **PDF**, or **JSON** documents.
+The admin interface allows uploading knowledge sources used by the chatbot. You can now upload plain text, **CSV**, **PDF**, or **JSON** documents.
 
 Telegram chat history from the bot is saved to `chathistory.json` and can be viewed in the "Chat History" page.
 
