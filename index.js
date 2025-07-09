@@ -3,6 +3,7 @@ const express = require('express');
 const axios = require('axios');
 const { CohereEmbeddings } = require('@langchain/cohere');
 const { QdrantClient } = require('@qdrant/js-client-rest');
+const fs = require('fs');
 
 const app = express();
 app.use(express.json());
@@ -13,6 +14,28 @@ const config = {
   topP: 1,
   topK: 3,
 };
+
+// Persisted chat history for Telegram bot
+const HISTORY_FILE = 'chathistory.json';
+let telegramHistory = {};
+
+try {
+  telegramHistory = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
+} catch {
+  telegramHistory = {};
+}
+
+function saveHistory() {
+  fs.promises
+    .writeFile(HISTORY_FILE, JSON.stringify(telegramHistory, null, 2))
+    .catch((e) => console.error('History save error:', e));
+}
+
+function addTelegramMessage(chatId, role, text) {
+  if (!telegramHistory[chatId]) telegramHistory[chatId] = [];
+  telegramHistory[chatId].push({ role, text });
+  saveHistory();
+}
 
 // --------- Qdrant Client Setup ---------
 const qdrant = new QdrantClient({
@@ -139,7 +162,8 @@ function pageTemplate(content) {
 
 function adminHtml() {
   return pageTemplate(`
-    <h1 class="text-3xl font-bold text-center mb-6">Admin & Test</h1>
+    <h1 class="text-3xl font-bold text-center mb-2">Admin & Test</h1>
+    <p class="text-center mb-4"><a class="text-blue-500 underline" href="/history">View Chat History</a></p>
     <div class="flex flex-col md:flex-row gap-6 flex-1 w-full">
       <div class="bg-white p-6 rounded shadow flex-1 flex flex-col min-w-[340px] md:min-w-[380px] w-full">
         <form id="upload-form" class="space-y-4 flex-1 flex flex-col w-full">
@@ -352,12 +376,27 @@ function chatHtml() {
   `);
 }
 
+function historyHtml() {
+  const sections = Object.entries(telegramHistory).map(([id, msgs]) => {
+    const msgHtml = msgs
+      .map(m => `<div class="${m.role === 'user' ? 'bg-blue-100' : 'bg-green-100'} rounded p-2 mb-1"><strong>${m.role === 'user' ? 'User' : 'Bot'}:</strong> ${m.text}</div>`) 
+      .join('');
+    return `<div class="border rounded p-4 mb-4"><h2 class="font-semibold mb-2">Chat ${id}</h2>${msgHtml}</div>`;
+  }).join('');
+  return pageTemplate(`
+    <h1 class="text-3xl font-bold text-center mb-8">Telegram Chat History</h1>
+    <div class="overflow-y-auto flex-1">${sections || '<p>No history yet</p>'}</div>
+    <p class="text-center mt-4"><a class="text-blue-500 underline" href="/">Home</a></p>
+  `);
+}
+
 function homeHtml() {
   return pageTemplate(`
     <h1 class="text-3xl font-bold mb-8 text-center">RAG Chatbot Demo</h1>
     <div class="flex justify-center space-x-4 w-full">
       <a class="bg-blue-500 text-white px-4 py-2 rounded" href="/admin">Admin</a>
       <a class="bg-green-500 text-white px-4 py-2 rounded" href="/chat">Chat</a>
+      <a class="bg-purple-500 text-white px-4 py-2 rounded" href="/history">Chat History</a>
     </div>
   `);
 }
@@ -432,6 +471,10 @@ app.post('/chat', async (req, res) => {
   }
 });
 
+app.get('/history', (req, res) => {
+  res.send(historyHtml());
+});
+
 app.get('/', (req, res) => {
   res.send(homeHtml());
 });
@@ -448,12 +491,15 @@ if (process.env.TELEGRAM_BOT_TOKEN) {
     const chatId = msg.chat.id;
     const text = msg.text?.trim();
     if (!text) return;
+    addTelegramMessage(chatId, 'user', text);
     try {
       const context = await searchDocs(text);
       const answer = await askLLM(context, text);
+      addTelegramMessage(chatId, 'bot', answer);
       await bot.sendMessage(chatId, answer);
     } catch (e) {
       console.error('Telegram bot error:', e);
+      addTelegramMessage(chatId, 'bot', 'Failed to generate answer');
       await bot.sendMessage(chatId, 'Failed to generate answer');
     }
   });

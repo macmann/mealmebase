@@ -4,6 +4,8 @@ This project is a simple RAG (Retrieval Augmented Generation) chatbot demo built
 
 The admin interface allows uploading knowledge sources used by the chatbot. You can now upload plain text, **PDF**, or **JSON** documents.
 
+Telegram chat history from the bot is saved to `chathistory.json` and can be viewed in the "Chat History" page.
+
 ## Setup
 
 1. Install dependencies:
