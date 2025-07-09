@@ -136,7 +136,10 @@ async function askLLM(context, question, history = []) {
         model: 'gpt-4.1-mini',
         messages: [
           { role: 'system', content: config.instruction || 'You are a helpful assistant.' },
-          ...history.slice(-5).map(m => ({ role: m.role, content: m.text })),
+          ...history.slice(-5).map(m => ({
+            role: m.role === 'bot' ? 'assistant' : m.role,
+            content: m.text,
+          })),
           { role: 'user', content: context ? `${context}\n\n${question}` : question },
         ],
         temperature: config.temperature,
