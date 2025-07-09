@@ -510,7 +510,34 @@ app.listen(PORT, () => console.log('Server running on port', PORT));
 // --- Telegram Bot Integration ---
 if (process.env.TELEGRAM_BOT_TOKEN) {
   const TelegramBot = require('node-telegram-bot-api');
-  const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
+  // Use manual start for polling so we can handle conflicts
+  const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, {
+    polling: { autoStart: false },
+  });
+
+  async function startBot() {
+    try {
+      // Ensure any webhook from a previous instance is removed
+      await bot.deleteWebhook({ drop_pending_updates: true });
+      await bot.startPolling();
+      console.log('Telegram bot started');
+    } catch (e) {
+      console.error('Failed to start Telegram bot:', e);
+    }
+  }
+
+  startBot();
+
+  // Restart polling on 409 conflict errors
+  bot.on('polling_error', (error) => {
+    console.error('Polling error:', error);
+    if (error?.response?.statusCode === 409 || String(error).includes('409')) {
+      bot.stopPolling()
+        .then(() => bot.deleteWebhook({ drop_pending_updates: true }))
+        .then(() => bot.startPolling())
+        .catch((e) => console.error('Failed to restart polling:', e));
+    }
+  });
 
   bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
@@ -533,8 +560,6 @@ if (process.env.TELEGRAM_BOT_TOKEN) {
       await bot.sendMessage(chatId, 'Failed to generate answer');
     }
   });
-
-  console.log('Telegram bot started');
 
   function shutdown() {
     bot.stopPolling()
