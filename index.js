@@ -6,7 +6,8 @@ const { QdrantClient } = require('@qdrant/js-client-rest');
 const fs = require('fs');
 
 const app = express();
-app.use(express.json());
+// Increase body size limit to handle large document uploads
+app.use(express.json({ limit: '25mb' }));
 
 const config = {
   instruction: '',
