@@ -505,6 +505,15 @@ if (process.env.TELEGRAM_BOT_TOKEN) {
   });
 
   console.log('Telegram bot started');
+
+  function shutdown() {
+    bot.stopPolling()
+      .catch((e) => console.error('Error stopping Telegram bot:', e))
+      .finally(() => process.exit());
+  }
+
+  process.once('SIGINT', shutdown);
+  process.once('SIGTERM', shutdown);
 } else {
   console.log('TELEGRAM_BOT_TOKEN not set, skipping Telegram bot startup');
 }
