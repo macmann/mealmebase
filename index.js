@@ -19,6 +19,7 @@ const config = {
 // Persisted chat history for Telegram bot
 const HISTORY_FILE = 'chathistory.json';
 let telegramHistory = {};
+const dashboardHistory = {};
 
 try {
   telegramHistory = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
@@ -35,7 +36,18 @@ function saveHistory() {
 function addTelegramMessage(chatId, role, text) {
   if (!telegramHistory[chatId]) telegramHistory[chatId] = [];
   telegramHistory[chatId].push({ role, text });
+  if (telegramHistory[chatId].length > 5) {
+    telegramHistory[chatId] = telegramHistory[chatId].slice(-5);
+  }
   saveHistory();
+}
+
+function addDashboardMessage(sessionId, role, text) {
+  if (!dashboardHistory[sessionId]) dashboardHistory[sessionId] = [];
+  dashboardHistory[sessionId].push({ role, text });
+  if (dashboardHistory[sessionId].length > 5) {
+    dashboardHistory[sessionId] = dashboardHistory[sessionId].slice(-5);
+  }
 }
 
 // --------- Qdrant Client Setup ---------
@@ -116,7 +128,7 @@ async function removeDoc(id) {
   }
 }
 
-async function askLLM(context, question) {
+async function askLLM(context, question, history = []) {
   try {
     const res = await axios.post(
       'https://api.openai.com/v1/chat/completions',
@@ -124,6 +136,7 @@ async function askLLM(context, question) {
         model: 'gpt-4.1-mini',
         messages: [
           { role: 'system', content: config.instruction || 'You are a helpful assistant.' },
+          ...history.slice(-5).map(m => ({ role: m.role, content: m.text })),
           { role: 'user', content: context ? `${context}\n\n${question}` : question },
         ],
         temperature: config.temperature,
@@ -462,9 +475,17 @@ app.get('/chat', (req, res) => {
 app.post('/chat', async (req, res) => {
   console.log('CHAT POST', req.body);
   const { message } = req.body;
+  const sessionId = req.ip;
   try {
+    const history = dashboardHistory[sessionId] || [];
     const context = await searchDocs(message);
-    const answer = await askLLM(context, message);
+    const answer = await askLLM(
+      context,
+      message,
+      history.concat({ role: 'user', text: message })
+    );
+    addDashboardMessage(sessionId, 'user', message);
+    addDashboardMessage(sessionId, 'bot', answer);
     res.json({ answer });
   } catch (e) {
     console.error('Chat error:', e);
@@ -492,10 +513,15 @@ if (process.env.TELEGRAM_BOT_TOKEN) {
     const chatId = msg.chat.id;
     const text = msg.text?.trim();
     if (!text) return;
-    addTelegramMessage(chatId, 'user', text);
     try {
+      const history = telegramHistory[chatId] || [];
       const context = await searchDocs(text);
-      const answer = await askLLM(context, text);
+      const answer = await askLLM(
+        context,
+        text,
+        history.concat({ role: 'user', text }).slice(-5)
+      );
+      addTelegramMessage(chatId, 'user', text);
       addTelegramMessage(chatId, 'bot', answer);
       await bot.sendMessage(chatId, answer);
     } catch (e) {
