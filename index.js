@@ -521,7 +521,7 @@ if (process.env.TELEGRAM_BOT_TOKEN) {
   async function startBot() {
     try {
       // Ensure any webhook from a previous instance is removed
-      await bot.deleteWebhook({ drop_pending_updates: true });
+      await bot.deleteWebHook({ drop_pending_updates: true });
       await bot.startPolling();
       console.log('Telegram bot started');
     } catch (e) {
@@ -536,7 +536,7 @@ if (process.env.TELEGRAM_BOT_TOKEN) {
     console.error('Polling error:', error);
     if (error?.response?.statusCode === 409 || String(error).includes('409')) {
       bot.stopPolling()
-        .then(() => bot.deleteWebhook({ drop_pending_updates: true }))
+        .then(() => bot.deleteWebHook({ drop_pending_updates: true }))
         .then(() => bot.startPolling())
         .catch((e) => console.error('Failed to restart polling:', e));
     }
