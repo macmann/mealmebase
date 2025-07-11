@@ -215,6 +215,10 @@ function adminHtml(agent) {
     <div class="flex flex-col md:flex-row gap-6 flex-1 w-full">
       <div class="bg-white p-6 rounded shadow flex-1 flex flex-col min-w-[340px] md:min-w-[380px] w-full">
         <form id="upload-form" class="space-y-4 flex-1 flex flex-col w-full">
+          <div class="w-full">
+            <label class="block font-semibold mb-1">Name</label>
+            <input class="w-full border rounded px-3 py-2" id="name" value="${agent.name}" />
+          </div>
           <label class="block font-semibold mb-1">Instruction</label>
           <div class="mb-8">
             <div id="instruction-editor" class="h-40 w-full border rounded"></div>
@@ -316,6 +320,7 @@ function adminHtml(agent) {
           docs.push({ name: f.name, text });
         }
         const body = {
+          name: document.getElementById('name').value.trim(),
           instruction: quill.root.innerHTML,
           temperature: parseFloat(document.getElementById('temperature').value),
           topP: parseFloat(document.getElementById('topP').value),
@@ -639,7 +644,8 @@ app.post('/admin/:id', async (req, res) => {
   const agent = agents[req.params.id];
   if (!agent) return res.status(404).json({ error: 'Agent not found' });
   console.log('ADMIN POST', req.body);
-  const { instruction, temperature, topP, topK, telegramToken, files = [], text } = req.body;
+  const { name, instruction, temperature, topP, topK, telegramToken, files = [], text } = req.body;
+  if (typeof name === 'string' && name.trim()) agent.name = name.trim();
   if (instruction !== undefined) agent.instruction = instruction;
   if (!isNaN(temperature)) agent.temperature = temperature;
   if (!isNaN(topP)) agent.topP = topP;
