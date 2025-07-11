@@ -24,6 +24,7 @@ Telegram chat history from the bot is saved to `chathistory.json` and can be vie
    TELEGRAM_BOT_TOKEN=your_telegram_bot_token
    VIBER_AUTH_TOKEN=your_viber_auth_token
    VIBER_WEBHOOK_URL=https://your-domain.com
+   LOGO_URL=https://ibb.co/HDy3fYZ8
    ```
    You can copy `.env.example` as a starting point and fill in your keys.
    The `OPENAI_API_KEY` is required for generating embeddings and chatting with the OpenAI API.

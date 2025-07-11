@@ -5,6 +5,8 @@ const { CohereEmbeddings } = require('@langchain/cohere');
 const { QdrantClient } = require('@qdrant/js-client-rest');
 const fs = require('fs');
 
+const LOGO_URL = process.env.LOGO_URL || 'https://ibb.co/HDy3fYZ8';
+
 const app = express();
 // Increase body size limit to handle large document uploads
 app.use(express.json({ limit: '25mb' }));
@@ -191,6 +193,10 @@ function pageTemplate(content) {
         </style>
       </head>
       <body class="bg-gray-100 min-h-screen">
+        <header class="bg-white shadow p-4 mb-4 flex items-center">
+          <img src="${LOGO_URL}" alt="Logo" class="h-12 mr-3" />
+          <span class="text-xl font-bold">RAG Chatbot</span>
+        </header>
         <section class="min-h-screen w-full flex flex-col px-2 py-4">
           <div class="flex-1 flex flex-col w-full">${content}</div>
         </section>
