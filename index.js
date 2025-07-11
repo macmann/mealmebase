@@ -177,7 +177,7 @@ function pageTemplate(content) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <script src="https://cdn.tailwindcss.com"></script>
         <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-        <title>RAG Chatbot</title>
+        <title>dot.Me Platform</title>
         <style>
           .chat-box { min-height: 0; max-height: 100%; }
           .nav-btn {
@@ -192,7 +192,7 @@ function pageTemplate(content) {
         <header class="bg-white shadow p-4 mb-4 flex items-center justify-between">
           <div class="flex items-center">
             <img src="${LOGO_URL}" alt="Logo" class="h-12 mr-3" />
-            <span class="text-xl font-bold">RAG Chatbot</span>
+            <span class="text-xl font-bold">dot.Me Platform</span>
           </div>
           <nav class="flex gap-4 ml-auto">
             <button class="nav-btn" onclick="location.href='/'">Home</button>
@@ -466,7 +466,7 @@ function historyHtml() {
 
 function homeHtml() {
   return pageTemplate(`
-    <h1 class="text-3xl font-bold mb-8 text-center">RAG Chatbot Demo</h1>
+    <h1 class="text-3xl font-bold mb-8 text-center">dot.Me Platform Demo</h1>
     <div class="flex justify-center gap-8 w-full">
       <a href="/admin" class="block bg-white shadow rounded p-4 w-40 text-center hover:bg-gray-100">
         <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
