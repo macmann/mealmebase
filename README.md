@@ -1,4 +1,4 @@
-# MealMeBase RAG Chatbot
+# MealMeBase dot.Me Platform
 
 This project is a simple RAG (Retrieval Augmented Generation) chatbot demo built with Node.js and Express. The frontend is styled using [Tailwind CSS](https://tailwindcss.com) for a clean and modern look.
 
