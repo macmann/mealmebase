@@ -111,7 +111,7 @@ async function searchDocs(collection, query, topK) {
       with_payload: true,
     });
     console.log('Search returned', results.length, 'results');
-    return results.map((r) => r.payload.text).join('\n');
+    return results.map((r) => r.payload.text).join('\\n');
   } catch (e) {
     console.error('Search error:', e);
     return '';
@@ -308,7 +308,7 @@ function adminHtml(agent) {
           for (let i = 1; i <= pdf.numPages; i++) {
             const page = await pdf.getPage(i);
             const content = await page.getTextContent();
-            txt += content.items.map(it => it.str).join(' ') + '\n';
+            txt += content.items.map(it => it.str).join(' ') + '\\n';
           }
           return txt;
         }
