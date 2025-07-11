@@ -483,8 +483,9 @@ function adminListHtml() {
   return pageTemplate(`
     <h1 class="text-3xl font-bold mb-4 text-center">Manage Agents</h1>
     <div class="space-y-2 mb-4">${list || '<p>No agents</p>'}</div>
-    <form id="create-form" class="flex gap-2 justify-center">
+    <form id="create-form" class="flex flex-col md:flex-row gap-2 justify-center">
       <input class="border px-2 py-1 flex-1" id="name" placeholder="New agent name" />
+      <input class="border px-2 py-1 flex-1" id="telegramToken" placeholder="Telegram bot token (optional)" />
       <button class="bg-blue-500 text-white px-3 py-1 rounded" type="submit">Create</button>
     </form>
     <p class="text-center mt-4"><a class="text-blue-500 underline" href="/">Home</a></p>
@@ -492,8 +493,9 @@ function adminListHtml() {
       document.getElementById('create-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const name = document.getElementById('name').value.trim();
+        const token = document.getElementById('telegramToken').value.trim();
         if(!name) return;
-        const res = await fetch('/agents', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name})});
+        const res = await fetch('/agents', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name, telegramToken: token})});
         if(res.ok) location.reload();
       });
     </script>
@@ -613,10 +615,10 @@ app.get('/agents', (req, res) => {
 });
 
 app.post('/agents', async (req, res) => {
-  const { name } = req.body;
+  const { name, telegramToken } = req.body;
   const id = 'a' + Date.now();
   const collection = `agent_${id}`;
-  agents[id] = { id, name: name || 'Agent', instruction: '', temperature: 0.7, topP: 1, topK: 3, collection, telegramToken: '' };
+  agents[id] = { id, name: name || 'Agent', instruction: '', temperature: 0.7, topP: 1, topK: 3, collection, telegramToken: telegramToken || '' };
   try {
     await ensureCollection(collection);
     saveAgents();
