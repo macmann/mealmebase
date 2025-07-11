@@ -184,6 +184,7 @@ function pageTemplate(content) {
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <script src="https://cdn.tailwindcss.com"></script>
+        <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
         <title>RAG Chatbot</title>
         <style>
           .chat-box { min-height: 0; max-height: 100%; }
@@ -320,7 +321,8 @@ function adminHtml(agent) {
       function appendMessage(role, text) {
         const cls = role === 'user' ? 'bg-blue-100' : 'bg-green-100';
         const chat = document.getElementById('messages');
-        chat.innerHTML += '<div class="' + cls + ' rounded p-2"><strong>' + (role === 'user' ? 'You' : 'Bot') + ':</strong> ' + text + '</div>';
+        const html = marked.parse(text);
+        chat.innerHTML += '<div class="' + cls + ' rounded p-2"><strong>' + (role === 'user' ? 'You' : 'Bot') + ':</strong> ' + html + '</div>';
         chat.scrollTop = chat.scrollHeight;
       }
 
@@ -393,7 +395,8 @@ function chatHtml(agent) {
       function appendMessage(role, text) {
         const cls = role === 'user' ? 'bg-blue-100' : 'bg-green-100';
         const chat = document.getElementById('messages');
-        chat.innerHTML += '<div class="' + cls + ' rounded p-2"><strong>' + (role === 'user' ? 'You' : 'Bot') + ':</strong> ' + text + '</div>';
+        const html = marked.parse(text);
+        chat.innerHTML += '<div class="' + cls + ' rounded p-2"><strong>' + (role === 'user' ? 'You' : 'Bot') + ':</strong> ' + html + '</div>';
         chat.scrollTop = chat.scrollHeight;
       }
       async function sendMessage() {
@@ -418,9 +421,11 @@ function chatHtml(agent) {
 }
 
 function historyHtml() {
+  const esc = (s) =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const sections = Object.entries(telegramHistory).map(([id, msgs]) => {
     const msgHtml = msgs
-      .map(m => `<div class="${m.role === 'user' ? 'bg-blue-100' : 'bg-green-100'} rounded p-2 mb-1"><strong>${m.role === 'user' ? 'User' : 'Bot'}:</strong> ${m.text}</div>`) 
+      .map(m => `<div class="${m.role === 'user' ? 'bg-blue-100' : 'bg-green-100'} rounded p-2 mb-1"><strong>${m.role === 'user' ? 'User' : 'Bot'}:</strong> <span class="md">${esc(m.text)}</span></div>`)
       .join('');
     return `<div class="border rounded p-4 mb-4"><h2 class="font-semibold mb-2">Chat ${id}</h2>${msgHtml}</div>`;
   }).join('');
@@ -428,6 +433,11 @@ function historyHtml() {
     <h1 class="text-3xl font-bold text-center mb-8">Telegram Chat History</h1>
     <div class="overflow-y-auto flex-1">${sections || '<p>No history yet</p>'}</div>
     <p class="text-center mt-4"><a class="text-blue-500 underline" href="/">Home</a></p>
+    <script>
+      document.querySelectorAll('.md').forEach(el => {
+        el.innerHTML = marked.parse(el.textContent);
+      });
+    </script>
   `);
 }
 
