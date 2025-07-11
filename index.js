@@ -450,25 +450,34 @@ function historyHtml() {
 function homeHtml() {
   return pageTemplate(`
     <h1 class="text-3xl font-bold mb-8 text-center">RAG Chatbot Demo</h1>
-    <div class="flex justify-center space-x-4 w-full">
-      <a class="bg-blue-500 text-white px-4 py-2 rounded" href="/agents">Agents</a>
-      <a class="bg-purple-500 text-white px-4 py-2 rounded" href="/history">Chat History</a>
+    <div class="flex justify-center gap-8 w-full">
+      <a href="/admin" class="block bg-white shadow rounded p-4 w-40 text-center hover:bg-gray-100">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l.7 2.152a1 1 0 00.95.69h2.252c.969 0 1.371 1.24.588 1.81l-1.823 1.322a1 1 0 00-.364 1.118l.7 2.152c.3.921-.755 1.688-1.54 1.118l-1.823-1.322a1 1 0 00-1.176 0l-1.823 1.322c-.784.57-1.838-.197-1.539-1.118l.7-2.152a1 1 0 00-.364-1.118L4.21 7.579c-.783-.57-.38-1.81.588-1.81h2.252a1 1 0 00.95-.69l.7-2.152z" />
+        </svg>
+        <span class="block font-semibold">Admin</span>
+      </a>
+      <a href="/chat" class="block bg-white shadow rounded p-4 w-40 text-center hover:bg-gray-100">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8a9 9 0 100-18 9 9 0 000 18z" />
+        </svg>
+        <span class="block font-semibold">User</span>
+      </a>
     </div>
   `);
 }
 
-function agentsHtml() {
+function adminListHtml() {
   const list = Object.values(agents).map(a => `
     <div class="flex justify-between items-center border rounded p-2">
       <span>${a.name}</span>
       <span>
-        <a class="text-green-500 underline mr-2" href="/chat/${a.id}">Chat</a>
-        <a class="text-blue-500 underline" href="/admin/${a.id}">Admin</a>
+        <a class="text-blue-500 underline" href="/admin/${a.id}">Edit</a>
       </span>
     </div>
   `).join('');
   return pageTemplate(`
-    <h1 class="text-3xl font-bold mb-4 text-center">Agents</h1>
+    <h1 class="text-3xl font-bold mb-4 text-center">Manage Agents</h1>
     <div class="space-y-2 mb-4">${list || '<p>No agents</p>'}</div>
     <form id="create-form" class="flex gap-2 justify-center">
       <input class="border px-2 py-1 flex-1" id="name" placeholder="New agent name" />
@@ -487,9 +496,101 @@ function agentsHtml() {
   `);
 }
 
+function chatPanelHtml() {
+  const agentArr = Object.values(agents);
+  const first = agentArr[0] || { id: '', name: '' };
+  return pageTemplate(`
+    <div class="flex flex-col md:flex-row gap-4 flex-1 w-full">
+      <div class="bg-white p-4 rounded shadow md:w-1/4 overflow-y-auto" id="sidebar">
+        <h2 class="text-xl font-semibold mb-2">Agents</h2>
+        <div id="agent-list" class="space-y-2"></div>
+        <button id="view-history" class="mt-4 bg-purple-500 text-white px-3 py-1 rounded w-full">Chat History</button>
+      </div>
+      <div class="bg-white p-4 rounded shadow flex flex-col flex-1 min-h-[500px]">
+        <h2 id="agent-name" class="text-xl font-semibold mb-2"></h2>
+        <div id="messages" class="chat-box flex-1 overflow-y-auto space-y-2 mb-4"></div>
+        <div class="flex gap-2">
+          <input class="flex-1 border rounded-l px-3 py-3" id="msg" placeholder="Ask something..." />
+          <button class="bg-blue-500 text-white px-5 py-3 rounded-r" id="send">Send</button>
+        </div>
+      </div>
+    </div>
+    <style>
+      .chat-box { min-height: 0; max-height: 100%; }
+    </style>
+    <script>
+      const agents = ${JSON.stringify(agentArr)};
+      let current = '${first.id}';
+
+      function renderAgents() {
+        const listEl = document.getElementById('agent-list');
+        listEl.innerHTML = '';
+        agents.forEach(a => {
+          const div = document.createElement('div');
+          div.textContent = a.name;
+          div.className = 'agent-item cursor-pointer p-2 rounded ' + (a.id === current ? 'bg-blue-100' : 'bg-gray-100');
+          div.addEventListener('click', () => { current = a.id; clearMessages(); renderAgents(); document.getElementById('agent-name').textContent = a.name; });
+          listEl.appendChild(div);
+        });
+      }
+
+      function clearMessages() { document.getElementById('messages').innerHTML = ''; }
+
+      function appendMessage(role, text) {
+        const cls = role === 'user' ? 'bg-blue-100' : 'bg-green-100';
+        const chat = document.getElementById('messages');
+        const html = marked.parse(text);
+        chat.innerHTML += '<div class="' + cls + ' rounded p-2"><strong>' + (role === 'user' ? 'You' : 'Bot') + ':</strong> ' + html + '</div>';
+        chat.scrollTop = chat.scrollHeight;
+      }
+
+      async function sendMessage() {
+        const msgEl = document.getElementById('msg');
+        const msg = msgEl.value.trim();
+        if (!msg || !current) return;
+        msgEl.value = '';
+        appendMessage('user', msg);
+        try {
+          const res = await fetch('/chat/' + current, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ message: msg }) });
+          const data = await res.json();
+          if (!res.ok || data.error) throw new Error(data.error);
+          appendMessage('bot', data.answer);
+        } catch (e) {
+          appendMessage('bot', 'Failed to generate answer');
+        }
+      }
+
+      document.getElementById('send').addEventListener('click', sendMessage);
+      document.getElementById('msg').addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); sendMessage(); }});
+      document.getElementById('view-history').addEventListener('click', () => { if(current) window.location.href = '/user-history/' + current; });
+
+      if (first) { document.getElementById('agent-name').textContent = first.name; }
+      renderAgents();
+    </script>
+  `);
+}
+
+function userHistoryHtml(id) {
+  const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const threads = Object.entries(dashboardHistory).filter(([k]) => k.endsWith('-' + id));
+  const sections = threads.map(([tid, msgs]) => {
+    const msgHtml = msgs.map(m => `<div class="${m.role === 'user' ? 'bg-blue-100' : 'bg-green-100'} rounded p-2 mb-1"><strong>${m.role === 'user' ? 'User' : 'Bot'}:</strong> <span class="md">${esc(m.text)}</span></div>`).join('');
+    return `<div class="border rounded p-4 mb-4"><h2 class="font-semibold mb-2">Thread ${tid}</h2>${msgHtml}</div>`;
+  }).join('');
+  const name = agents[id]?.name || 'Agent';
+  return pageTemplate(`
+    <h1 class="text-3xl font-bold text-center mb-8">Chat History - ${name}</h1>
+    <div class="overflow-y-auto flex-1">${sections || '<p>No history yet</p>'}</div>
+    <p class="text-center mt-4"><a class="text-blue-500 underline" href="/chat">Back</a></p>
+    <script>
+      document.querySelectorAll('.md').forEach(el => { el.innerHTML = marked.parse(el.textContent); });
+    </script>
+  `);
+}
+
 // ---- Routes ----
 app.get('/agents', (req, res) => {
-  res.send(agentsHtml());
+  res.send(adminListHtml());
 });
 
 app.post('/agents', async (req, res) => {
@@ -508,11 +609,11 @@ app.post('/agents', async (req, res) => {
 });
 
 app.get('/admin', (req, res) => {
-  res.redirect('/admin/default');
+  res.send(adminListHtml());
 });
 
 app.get('/chat', (req, res) => {
-  res.redirect('/chat/default');
+  res.send(chatPanelHtml());
 });
 
 app.get('/admin/:id', (req, res) => {
@@ -599,6 +700,10 @@ app.post('/chat/:id', async (req, res) => {
     console.error('Chat error:', e);
     res.status(500).json({ error: 'Failed to generate answer' });
   }
+});
+
+app.get('/user-history/:id', (req, res) => {
+  res.send(userHistoryHtml(req.params.id));
 });
 
 app.get('/history', (req, res) => {
