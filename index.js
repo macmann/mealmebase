@@ -26,22 +26,10 @@ function saveAgents() {
     .catch((e) => console.error('Agents save error:', e));
 }
 
-if (Object.keys(agents).length === 0) {
-  agents.default = {
-    id: 'default',
-    name: 'Default Agent',
-    instruction: '',
-    temperature: 0.7,
-    topP: 1,
-    topK: 3,
-    collection: 'docs',
-    telegramToken: '',
-  };
-  saveAgents();
-}
 
 // Persisted chat history for Telegram bot
 const HISTORY_FILE = 'chathistory.json';
+// Structure: { [agentId]: { [chatId]: [{role,text}] } }
 let telegramHistory = {};
 const dashboardHistory = {};
 
@@ -57,11 +45,12 @@ function saveHistory() {
     .catch((e) => console.error('History save error:', e));
 }
 
-function addTelegramMessage(chatId, role, text) {
-  if (!telegramHistory[chatId]) telegramHistory[chatId] = [];
-  telegramHistory[chatId].push({ role, text });
-  if (telegramHistory[chatId].length > 5) {
-    telegramHistory[chatId] = telegramHistory[chatId].slice(-5);
+function addTelegramMessage(agentId, chatId, role, text) {
+  if (!telegramHistory[agentId]) telegramHistory[agentId] = {};
+  if (!telegramHistory[agentId][chatId]) telegramHistory[agentId][chatId] = [];
+  telegramHistory[agentId][chatId].push({ role, text });
+  if (telegramHistory[agentId][chatId].length > 5) {
+    telegramHistory[agentId][chatId] = telegramHistory[agentId][chatId].slice(-5);
   }
   saveHistory();
 }
@@ -448,11 +437,15 @@ function chatHtml(agent) {
 function historyHtml() {
   const esc = (s) =>
     s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const sections = Object.entries(telegramHistory).map(([id, msgs]) => {
-    const msgHtml = msgs
-      .map(m => `<div class="${m.role === 'user' ? 'bg-blue-100' : 'bg-green-100'} rounded p-2 mb-1"><strong>${m.role === 'user' ? 'User' : 'Bot'}:</strong> <span class="md">${esc(m.text)}</span></div>`)
-      .join('');
-    return `<div class="border rounded p-4 mb-4"><h2 class="font-semibold mb-2">Chat ${id}</h2>${msgHtml}</div>`;
+  const sections = Object.entries(telegramHistory).map(([agentId, chats]) => {
+    const agentName = agents[agentId]?.name || agentId;
+    const chatsHtml = Object.entries(chats).map(([cid, msgs]) => {
+      const msgHtml = msgs
+        .map(m => `<div class="${m.role === 'user' ? 'bg-blue-100' : 'bg-green-100'} rounded p-2 mb-1"><strong>${m.role === 'user' ? 'User' : 'Bot'}:</strong> <span class="md">${esc(m.text)}</span></div>`)
+        .join('');
+      return `<div class="border rounded p-2 mb-2"><h3 class="font-semibold mb-1">Chat ${cid}</h3>${msgHtml}</div>`;
+    }).join('');
+    return `<div class="border-2 rounded p-4 mb-4"><h2 class="font-semibold mb-2">Agent ${agentName}</h2>${chatsHtml}</div>`;
   }).join('');
   return pageTemplate(`
     <h1 class="text-3xl font-bold text-center mb-8">Telegram Chat History</h1>
@@ -620,6 +613,7 @@ app.post('/agents', async (req, res) => {
   try {
     await ensureCollection(collection);
     saveAgents();
+    if (agents[id].telegramToken) startTelegramBot(agents[id]);
     res.json({ id });
   } catch (e) {
     console.error('Create agent error:', e);
@@ -672,6 +666,7 @@ app.post('/admin/:id', async (req, res) => {
     if (!ok) return res.status(500).json({ error: 'Ingest failed.' });
   }
   saveAgents();
+  if (agent.telegramToken) startTelegramBot(agent); else stopTelegramBot(agent.id);
   res.json({ status: 'ok' });
 });
 
@@ -737,40 +732,43 @@ app.get('/', (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log('Server running on port', PORT));
 
-const defaultAgent = agents[process.env.TELEGRAM_AGENT_ID] || Object.values(agents)[0];
+function getFirstAgent() {
+  return Object.values(agents)[0];
+}
 
 // --- Telegram Bot Integration ---
-const telegramToken = process.env.TELEGRAM_BOT_TOKEN || (defaultAgent && defaultAgent.telegramToken);
-if (telegramToken) {
-  const TelegramBot = require('node-telegram-bot-api');
-  // Use manual start for polling so we can handle conflicts
-  const bot = new TelegramBot(telegramToken, {
-    polling: { autoStart: false },
-  });
+const TelegramBot = require('node-telegram-bot-api');
+const telegramBots = {};
 
+function startTelegramBot(agent) {
+  const token = agent.telegramToken;
+  if (!token) return;
 
-  async function startBot(attempt = 0) {
+  if (telegramBots[agent.id]) {
+    if (telegramBots[agent.id].token === token) return;
+    telegramBots[agent.id].bot.stopPolling().catch((e) => console.error('Error stopping Telegram bot:', e));
+  }
+
+  const bot = new TelegramBot(token, { polling: { autoStart: false } });
+  telegramBots[agent.id] = { bot, token };
+
+  async function start(attempt = 0) {
     try {
-      // Ensure any webhook from a previous instance is removed
       await bot.deleteWebHook({ drop_pending_updates: true });
       await bot.startPolling();
-      console.log('Telegram bot started');
+      console.log(`Telegram bot started for agent ${agent.id}`);
     } catch (e) {
       console.error('Failed to start Telegram bot:', e);
-      if (
-        attempt < 5 &&
-        (e?.response?.statusCode === 409 || String(e).includes('409'))
-      ) {
+      if (attempt < 5 && (e?.response?.statusCode === 409 || String(e).includes('409'))) {
         const delay = 5000;
         console.log(`Retrying Telegram bot start in ${delay / 1000}s...`);
-        setTimeout(() => startBot(attempt + 1), delay);
+        setTimeout(() => start(attempt + 1), delay);
       }
     }
   }
 
-  startBot();
+  start();
 
-  // Restart polling on 409 conflict errors
   bot.on('polling_error', (error) => {
     console.error('Polling error:', error);
     if (error?.response?.statusCode === 409 || String(error).includes('409')) {
@@ -786,35 +784,36 @@ if (telegramToken) {
     const text = msg.text?.trim();
     if (!text) return;
     try {
-      const history = telegramHistory[chatId] || [];
-      const context = await searchDocs(defaultAgent.collection, text, defaultAgent.topK);
-      const answer = await askLLM(
-        defaultAgent,
-        context,
-        text,
-        history.concat({ role: 'user', text }).slice(-5)
-      );
-      addTelegramMessage(chatId, 'user', text);
-      addTelegramMessage(chatId, 'bot', answer);
+      const history = (telegramHistory[agent.id] && telegramHistory[agent.id][chatId]) || [];
+      const context = await searchDocs(agent.collection, text, agent.topK);
+      const answer = await askLLM(agent, context, text, history.concat({ role: 'user', text }).slice(-5));
+      addTelegramMessage(agent.id, chatId, 'user', text);
+      addTelegramMessage(agent.id, chatId, 'bot', answer);
       await bot.sendMessage(chatId, answer);
     } catch (e) {
       console.error('Telegram bot error:', e);
-      addTelegramMessage(chatId, 'bot', 'Failed to generate answer');
+      addTelegramMessage(agent.id, chatId, 'bot', 'Failed to generate answer');
       await bot.sendMessage(chatId, 'Failed to generate answer');
     }
   });
-
-  function shutdown() {
-    bot.stopPolling()
-      .catch((e) => console.error('Error stopping Telegram bot:', e))
-      .finally(() => process.exit());
-  }
-
-  process.once('SIGINT', shutdown);
-  process.once('SIGTERM', shutdown);
-} else {
-  console.log('No Telegram token found, skipping Telegram bot startup');
 }
+
+function stopTelegramBot(agentId) {
+  const entry = telegramBots[agentId];
+  if (entry) {
+    entry.bot.stopPolling().catch((e) => console.error('Error stopping Telegram bot:', e));
+    delete telegramBots[agentId];
+  }
+}
+
+Object.values(agents).forEach(startTelegramBot);
+
+function shutdown() {
+  Promise.all(Object.values(telegramBots).map((b) => b.bot.stopPolling().catch(() => {}))).finally(() => process.exit());
+}
+
+process.once('SIGINT', shutdown);
+process.once('SIGTERM', shutdown);
 
 // --- Viber Bot Integration ---
 if (process.env.VIBER_AUTH_TOKEN) {
@@ -824,9 +823,11 @@ if (process.env.VIBER_AUTH_TOKEN) {
     const { event, message, sender } = req.body;
     if (event === 'message' && message && sender && message.text) {
       const text = message.text.trim();
+      const agent = getFirstAgent();
+      if (!agent) return res.sendStatus(200);
       try {
-        const context = await searchDocs(defaultAgent.collection, text, defaultAgent.topK);
-        const answer = await askLLM(defaultAgent, context, text);
+        const context = await searchDocs(agent.collection, text, agent.topK);
+        const answer = await askLLM(agent, context, text);
         await axios.post(`${VIBER_API}/send_message`, {
           receiver: sender.id,
           type: 'text',
