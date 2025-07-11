@@ -35,6 +35,7 @@ if (Object.keys(agents).length === 0) {
     topP: 1,
     topK: 3,
     collection: 'docs',
+    telegramToken: '',
   };
   saveAgents();
 }
@@ -242,6 +243,10 @@ function adminHtml(agent) {
             <input class="w-full border rounded px-3 py-2" id="topK" type="number" value="${agent.topK}" />
           </div>
           <div class="w-full">
+            <label class="block font-semibold mb-1">Telegram Bot Token</label>
+            <input class="w-full border rounded px-3 py-2" id="telegramToken" value="${agent.telegramToken || ''}" />
+          </div>
+          <div class="w-full">
             <label class="block font-semibold mb-1">Documents</label>
             <input class="w-full border rounded px-3 py-2" type="file" id="file" accept=".txt,.pdf,.json,.csv" multiple />
           </div>
@@ -326,6 +331,7 @@ function adminHtml(agent) {
           temperature: parseFloat(document.getElementById('temperature').value),
           topP: parseFloat(document.getElementById('topP').value),
           topK: parseInt(document.getElementById('topK').value, 10),
+          telegramToken: document.getElementById('telegramToken').value.trim(),
           files: docs,
         };
         const res = await fetch('/admin/${agent.id}', {
@@ -610,7 +616,7 @@ app.post('/agents', async (req, res) => {
   const { name } = req.body;
   const id = 'a' + Date.now();
   const collection = `agent_${id}`;
-  agents[id] = { id, name: name || 'Agent', instruction: '', temperature: 0.7, topP: 1, topK: 3, collection };
+  agents[id] = { id, name: name || 'Agent', instruction: '', temperature: 0.7, topP: 1, topK: 3, collection, telegramToken: '' };
   try {
     await ensureCollection(collection);
     saveAgents();
@@ -639,11 +645,12 @@ app.post('/admin/:id', async (req, res) => {
   const agent = agents[req.params.id];
   if (!agent) return res.status(404).json({ error: 'Agent not found' });
   console.log('ADMIN POST', req.body);
-  const { instruction, temperature, topP, topK, files = [], text } = req.body;
+  const { instruction, temperature, topP, topK, telegramToken, files = [], text } = req.body;
   if (instruction !== undefined) agent.instruction = instruction;
   if (!isNaN(temperature)) agent.temperature = temperature;
   if (!isNaN(topP)) agent.topP = topP;
   if (!isNaN(topK)) agent.topK = topK;
+  if (telegramToken !== undefined) agent.telegramToken = telegramToken;
   if (files && Array.isArray(files)) {
     for (const f of files) {
       if (!f || !f.text) continue;
@@ -733,10 +740,11 @@ app.listen(PORT, () => console.log('Server running on port', PORT));
 const defaultAgent = agents[process.env.TELEGRAM_AGENT_ID] || Object.values(agents)[0];
 
 // --- Telegram Bot Integration ---
-if (process.env.TELEGRAM_BOT_TOKEN) {
+const telegramToken = process.env.TELEGRAM_BOT_TOKEN || (defaultAgent && defaultAgent.telegramToken);
+if (telegramToken) {
   const TelegramBot = require('node-telegram-bot-api');
   // Use manual start for polling so we can handle conflicts
-  const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, {
+  const bot = new TelegramBot(telegramToken, {
     polling: { autoStart: false },
   });
 
@@ -805,7 +813,7 @@ if (process.env.TELEGRAM_BOT_TOKEN) {
   process.once('SIGINT', shutdown);
   process.once('SIGTERM', shutdown);
 } else {
-  console.log('TELEGRAM_BOT_TOKEN not set, skipping Telegram bot startup');
+  console.log('No Telegram token found, skipping Telegram bot startup');
 }
 
 // --- Viber Bot Integration ---
