@@ -9,12 +9,33 @@ const app = express();
 // Increase body size limit to handle large document uploads
 app.use(express.json({ limit: '25mb' }));
 
-const config = {
-  instruction: '',
-  temperature: 0.7,
-  topP: 1,
-  topK: 3,
-};
+const AGENTS_FILE = 'agents.json';
+let agents = {};
+
+try {
+  agents = JSON.parse(fs.readFileSync(AGENTS_FILE, 'utf8'));
+} catch {
+  agents = {};
+}
+
+function saveAgents() {
+  fs.promises
+    .writeFile(AGENTS_FILE, JSON.stringify(agents, null, 2))
+    .catch((e) => console.error('Agents save error:', e));
+}
+
+if (Object.keys(agents).length === 0) {
+  agents.default = {
+    id: 'default',
+    name: 'Default Agent',
+    instruction: '',
+    temperature: 0.7,
+    topP: 1,
+    topK: 3,
+    collection: 'docs',
+  };
+  saveAgents();
+}
 
 // Persisted chat history for Telegram bot
 const HISTORY_FILE = 'chathistory.json';
@@ -55,24 +76,24 @@ const qdrant = new QdrantClient({
   url: process.env.QDRANT_HOST || 'http://localhost:6333',
   apiKey: process.env.QDRANT_API_KEY, // only needed for Qdrant Cloud
 });
-const collection = 'docs';
+
 
 // ------- Qdrant Collection Helper -------
-async function ensureCollection() {
+async function ensureCollection(name) {
   try {
-    await qdrant.createCollection(collection, { vectors: { size: 1536, distance: 'Cosine' } });
+    await qdrant.createCollection(name, { vectors: { size: 1536, distance: 'Cosine' } });
   } catch (e) {
     // Ignore if already exists
   }
 }
 
-async function ingestDocument(text, name) {
+async function ingestDocument(collection, text, name) {
   try {
     const embeddings = new CohereEmbeddings({
       apiKey: process.env.COHERE_API_KEY,
       model: "embed-v4.0",
     });
-    await ensureCollection();
+    await ensureCollection(collection);
     const vector = await embeddings.embedQuery(text);
     await qdrant.upsert(collection, {
       points: [{ id: Date.now() + Math.floor(Math.random() * 1e6), vector, payload: { text, name } }],
@@ -85,7 +106,7 @@ async function ingestDocument(text, name) {
   }
 }
 
-async function searchDocs(query) {
+async function searchDocs(collection, query, topK) {
   try {
     const embeddings = new CohereEmbeddings({
       apiKey: process.env.COHERE_API_KEY,
@@ -94,7 +115,7 @@ async function searchDocs(query) {
     const vector = await embeddings.embedQuery(query);
     const results = await qdrant.search(collection, {
       vector,
-      limit: config.topK,
+      limit: topK,
       with_payload: true,
     });
     console.log('Search returned', results.length, 'results');
@@ -105,8 +126,8 @@ async function searchDocs(query) {
   }
 }
 
-async function listDocs() {
-  await ensureCollection();
+async function listDocs(collection) {
+  await ensureCollection(collection);
   const docs = [];
   let offset = undefined;
   do {
@@ -117,7 +138,7 @@ async function listDocs() {
   return docs;
 }
 
-async function removeDoc(id) {
+async function removeDoc(collection, id) {
   try {
     const pointId = typeof id === 'string' ? Number(id) : id;
     await qdrant.delete(collection, { points: [pointId] });
@@ -128,22 +149,22 @@ async function removeDoc(id) {
   }
 }
 
-async function askLLM(context, question, history = []) {
+async function askLLM(agent, context, question, history = []) {
   try {
     const res = await axios.post(
       'https://api.openai.com/v1/chat/completions',
       {
         model: 'gpt-4.1-mini',
         messages: [
-          { role: 'system', content: config.instruction || 'You are a helpful assistant.' },
+          { role: 'system', content: agent.instruction || 'You are a helpful assistant.' },
           ...history.slice(-5).map(m => ({
             role: m.role === 'bot' ? 'assistant' : m.role,
             content: m.text,
           })),
           { role: 'user', content: context ? `${context}\n\n${question}` : question },
         ],
-        temperature: config.temperature,
-        top_p: config.topP,
+        temperature: agent.temperature,
+        top_p: agent.topP,
       },
       { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` } }
     );
@@ -177,9 +198,9 @@ function pageTemplate(content) {
   `;
 }
 
-function adminHtml() {
+function adminHtml(agent) {
   return pageTemplate(`
-    <h1 class="text-3xl font-bold text-center mb-2">Admin & Test</h1>
+    <h1 class="text-3xl font-bold text-center mb-2">Admin & Test - ${agent.name}</h1>
     <p class="text-center mb-4"><a class="text-blue-500 underline" href="/history">View Chat History</a></p>
     <div class="flex flex-col md:flex-row gap-6 flex-1 w-full">
       <div class="bg-white p-6 rounded shadow flex-1 flex flex-col min-w-[340px] md:min-w-[380px] w-full">
@@ -190,15 +211,15 @@ function adminHtml() {
           </div>
           <div class="w-full">
             <label class="block font-semibold mb-1">Temperature</label>
-            <input class="w-full border rounded px-3 py-2" id="temperature" type="number" step="0.1" value="${config.temperature}" />
+            <input class="w-full border rounded px-3 py-2" id="temperature" type="number" step="0.1" value="${agent.temperature}" />
           </div>
           <div class="w-full">
             <label class="block font-semibold mb-1">Top P</label>
-            <input class="w-full border rounded px-3 py-2" id="topP" type="number" step="0.1" value="${config.topP}" />
+            <input class="w-full border rounded px-3 py-2" id="topP" type="number" step="0.1" value="${agent.topP}" />
           </div>
           <div class="w-full">
             <label class="block font-semibold mb-1">Top K</label>
-            <input class="w-full border rounded px-3 py-2" id="topK" type="number" value="${config.topK}" />
+            <input class="w-full border rounded px-3 py-2" id="topK" type="number" value="${agent.topK}" />
           </div>
           <div class="w-full">
             <label class="block font-semibold mb-1">Documents</label>
@@ -241,7 +262,7 @@ function adminHtml() {
       pdfjsLib.GlobalWorkerOptions.workerSrc =
         'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.worker.min.js';
       const quill = new Quill('#instruction-editor', { theme: 'snow' });
-      quill.root.innerHTML = ${JSON.stringify(config.instruction)};
+      quill.root.innerHTML = ${JSON.stringify(agent.instruction)};
 
       async function fileToText(file) {
         if (!file) return '';
@@ -287,7 +308,7 @@ function adminHtml() {
           topK: parseInt(document.getElementById('topK').value, 10),
           files: docs,
         };
-        const res = await fetch('/admin', {
+        const res = await fetch('/admin/${agent.id}', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
@@ -310,7 +331,7 @@ function adminHtml() {
         msgEl.value = '';
         appendMessage('user', msg);
         try {
-          const res = await fetch('/chat', {
+        const res = await fetch('/chat/${agent.id}', {
             method:'POST',
             headers:{'Content-Type':'application/json'},
             body: JSON.stringify({ message: msg })
@@ -327,7 +348,7 @@ function adminHtml() {
       document.getElementById('msg').addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); sendMessage(); }});
 
       async function loadDocs() {
-        const res = await fetch('/docs');
+        const res = await fetch('/docs/${agent.id}');
         if (!res.ok) return;
         const docs = await res.json();
         const container = document.getElementById('docs');
@@ -344,7 +365,7 @@ function adminHtml() {
       document.getElementById('docs').addEventListener('click', async (e) => {
         if (e.target.classList.contains('delete')) {
           const id = e.target.getAttribute('data-id');
-          const res = await fetch('/docs/' + id, { method: 'DELETE' });
+          const res = await fetch('/docs/${agent.id}/' + id, { method: 'DELETE' });
           if (res.ok) loadDocs();
         }
       });
@@ -354,16 +375,16 @@ function adminHtml() {
   `);
 }
 
-function chatHtml() {
+function chatHtml(agent) {
   return pageTemplate(`
-    <h1 class="text-3xl font-bold text-center mb-8">Chatbot</h1>
+    <h1 class="text-3xl font-bold text-center mb-8">Chatbot - ${agent.name}</h1>
     <div class="bg-white rounded shadow p-4 flex flex-col h-[75vh] w-full">
       <div id="messages" class="chat-box flex-1 overflow-y-auto space-y-2 mb-4"></div>
       <div class="flex gap-2">
         <input class="flex-1 border rounded-l px-3 py-3" id="msg" placeholder="Ask something..." />
         <button class="bg-blue-500 text-white px-5 py-3 rounded-r" id="send">Send</button>
       </div>
-      <p class="text-center mt-4"><a class="text-blue-500 underline" href="/admin">Back to Admin</a></p>
+      <p class="text-center mt-4"><a class="text-blue-500 underline" href="/admin/${agent.id}">Back to Admin</a></p>
     </div>
     <style>
       .chat-box { min-height: 0; max-height: 100%; }
@@ -382,7 +403,7 @@ function chatHtml() {
         msgEl.value = '';
         appendMessage('user', msg);
         try {
-          const res = await fetch('/chat', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ message: msg }) });
+          const res = await fetch('/chat/${agent.id}', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ message: msg }) });
           const data = await res.json();
           if (!res.ok || data.error) throw new Error(data.error);
           appendMessage('bot', data.answer);
@@ -414,51 +435,114 @@ function homeHtml() {
   return pageTemplate(`
     <h1 class="text-3xl font-bold mb-8 text-center">RAG Chatbot Demo</h1>
     <div class="flex justify-center space-x-4 w-full">
-      <a class="bg-blue-500 text-white px-4 py-2 rounded" href="/admin">Admin</a>
-      <a class="bg-green-500 text-white px-4 py-2 rounded" href="/chat">Chat</a>
+      <a class="bg-blue-500 text-white px-4 py-2 rounded" href="/agents">Agents</a>
       <a class="bg-purple-500 text-white px-4 py-2 rounded" href="/history">Chat History</a>
     </div>
   `);
 }
 
+function agentsHtml() {
+  const list = Object.values(agents).map(a => `
+    <div class="flex justify-between items-center border rounded p-2">
+      <span>${a.name}</span>
+      <span>
+        <a class="text-green-500 underline mr-2" href="/chat/${a.id}">Chat</a>
+        <a class="text-blue-500 underline" href="/admin/${a.id}">Admin</a>
+      </span>
+    </div>
+  `).join('');
+  return pageTemplate(`
+    <h1 class="text-3xl font-bold mb-4 text-center">Agents</h1>
+    <div class="space-y-2 mb-4">${list || '<p>No agents</p>'}</div>
+    <form id="create-form" class="flex gap-2 justify-center">
+      <input class="border px-2 py-1 flex-1" id="name" placeholder="New agent name" />
+      <button class="bg-blue-500 text-white px-3 py-1 rounded" type="submit">Create</button>
+    </form>
+    <p class="text-center mt-4"><a class="text-blue-500 underline" href="/">Home</a></p>
+    <script>
+      document.getElementById('create-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const name = document.getElementById('name').value.trim();
+        if(!name) return;
+        const res = await fetch('/agents', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name})});
+        if(res.ok) location.reload();
+      });
+    </script>
+  `);
+}
+
 // ---- Routes ----
-app.get('/admin', (req, res) => {
-  res.send(adminHtml());
+app.get('/agents', (req, res) => {
+  res.send(agentsHtml());
 });
 
-app.post('/admin', async (req, res) => {
+app.post('/agents', async (req, res) => {
+  const { name } = req.body;
+  const id = 'a' + Date.now();
+  const collection = `agent_${id}`;
+  agents[id] = { id, name: name || 'Agent', instruction: '', temperature: 0.7, topP: 1, topK: 3, collection };
+  try {
+    await ensureCollection(collection);
+    saveAgents();
+    res.json({ id });
+  } catch (e) {
+    console.error('Create agent error:', e);
+    res.status(500).json({ error: 'Failed to create agent' });
+  }
+});
+
+app.get('/admin', (req, res) => {
+  res.redirect('/admin/default');
+});
+
+app.get('/chat', (req, res) => {
+  res.redirect('/chat/default');
+});
+
+app.get('/admin/:id', (req, res) => {
+  const agent = agents[req.params.id];
+  if (!agent) return res.status(404).send('Agent not found');
+  res.send(adminHtml(agent));
+});
+
+app.post('/admin/:id', async (req, res) => {
+  const agent = agents[req.params.id];
+  if (!agent) return res.status(404).json({ error: 'Agent not found' });
   console.log('ADMIN POST', req.body);
   const { instruction, temperature, topP, topK, files = [], text } = req.body;
-  if (instruction !== undefined) config.instruction = instruction;
-  if (!isNaN(temperature)) config.temperature = temperature;
-  if (!isNaN(topP)) config.topP = topP;
-  if (!isNaN(topK)) config.topK = topK;
+  if (instruction !== undefined) agent.instruction = instruction;
+  if (!isNaN(temperature)) agent.temperature = temperature;
+  if (!isNaN(topP)) agent.topP = topP;
+  if (!isNaN(topK)) agent.topK = topK;
   if (files && Array.isArray(files)) {
     for (const f of files) {
       if (!f || !f.text) continue;
-      let text = f.text;
+      let txt = f.text;
       if (f.name && f.name.toLowerCase().endsWith('.json')) {
         try {
-          const data = JSON.parse(text);
-          text = JSON.stringify(data);
+          const data = JSON.parse(txt);
+          txt = JSON.stringify(data);
         } catch (e) {
           console.error('Invalid JSON file', f.name, e);
           return res.status(400).json({ error: 'Invalid JSON file' });
         }
       }
-      const ok = await ingestDocument(text, f.name);
+      const ok = await ingestDocument(agent.collection, txt, f.name);
       if (!ok) return res.status(500).json({ error: 'Ingest failed.' });
     }
   } else if (text) {
-    const ok = await ingestDocument(text, 'Document');
+    const ok = await ingestDocument(agent.collection, text, 'Document');
     if (!ok) return res.status(500).json({ error: 'Ingest failed.' });
   }
+  saveAgents();
   res.json({ status: 'ok' });
 });
 
-app.get('/docs', async (req, res) => {
+app.get('/docs/:agentId', async (req, res) => {
+  const agent = agents[req.params.agentId];
+  if (!agent) return res.status(404).json({ error: 'Agent not found' });
   try {
-    const docs = await listDocs();
+    const docs = await listDocs(agent.collection);
     res.json(docs);
   } catch (e) {
     console.error('List docs error:', e);
@@ -466,30 +550,32 @@ app.get('/docs', async (req, res) => {
   }
 });
 
-app.delete('/docs/:id', async (req, res) => {
+app.delete('/docs/:agentId/:id', async (req, res) => {
+  const agent = agents[req.params.agentId];
+  if (!agent) return res.status(404).json({ error: 'Agent not found' });
   const idParam = req.params.id;
   const id = Number(idParam);
-  const ok = await removeDoc(id);
+  const ok = await removeDoc(agent.collection, id);
   if (ok) res.json({ status: 'ok' });
   else res.status(500).json({ error: 'Delete failed' });
 });
 
-app.get('/chat', (req, res) => {
-  res.send(chatHtml());
+app.get('/chat/:id', (req, res) => {
+  const agent = agents[req.params.id];
+  if (!agent) return res.status(404).send('Agent not found');
+  res.send(chatHtml(agent));
 });
 
-app.post('/chat', async (req, res) => {
+app.post('/chat/:id', async (req, res) => {
   console.log('CHAT POST', req.body);
+  const agent = agents[req.params.id];
+  if (!agent) return res.status(404).json({ error: 'Agent not found' });
   const { message } = req.body;
-  const sessionId = req.ip;
+  const sessionId = req.ip + '-' + agent.id;
   try {
     const history = dashboardHistory[sessionId] || [];
-    const context = await searchDocs(message);
-    const answer = await askLLM(
-      context,
-      message,
-      history.concat({ role: 'user', text: message })
-    );
+    const context = await searchDocs(agent.collection, message, agent.topK);
+    const answer = await askLLM(agent, context, message, history.concat({ role: 'user', text: message }));
     addDashboardMessage(sessionId, 'user', message);
     addDashboardMessage(sessionId, 'bot', answer);
     res.json({ answer });
@@ -510,6 +596,8 @@ app.get('/', (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log('Server running on port', PORT));
 
+const defaultAgent = agents[process.env.TELEGRAM_AGENT_ID] || Object.values(agents)[0];
+
 // --- Telegram Bot Integration ---
 if (process.env.TELEGRAM_BOT_TOKEN) {
   const TelegramBot = require('node-telegram-bot-api');
@@ -517,6 +605,7 @@ if (process.env.TELEGRAM_BOT_TOKEN) {
   const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, {
     polling: { autoStart: false },
   });
+
 
   async function startBot() {
     try {
@@ -548,8 +637,9 @@ if (process.env.TELEGRAM_BOT_TOKEN) {
     if (!text) return;
     try {
       const history = telegramHistory[chatId] || [];
-      const context = await searchDocs(text);
+      const context = await searchDocs(defaultAgent.collection, text, defaultAgent.topK);
       const answer = await askLLM(
+        defaultAgent,
         context,
         text,
         history.concat({ role: 'user', text }).slice(-5)
@@ -585,8 +675,8 @@ if (process.env.VIBER_AUTH_TOKEN) {
     if (event === 'message' && message && sender && message.text) {
       const text = message.text.trim();
       try {
-        const context = await searchDocs(text);
-        const answer = await askLLM(context, text);
+        const context = await searchDocs(defaultAgent.collection, text, defaultAgent.topK);
+        const answer = await askLLM(defaultAgent, context, text);
         await axios.post(`${VIBER_API}/send_message`, {
           receiver: sender.id,
           type: 'text',
