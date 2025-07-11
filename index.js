@@ -190,19 +190,25 @@ function pageTemplate(content) {
         <title>RAG Chatbot</title>
         <style>
           .chat-box { min-height: 0; max-height: 100%; }
+          .nav-btn {
+            background-color: #3b82f6;
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 0.25rem;
+          }
         </style>
       </head>
       <body class="bg-gray-100 min-h-screen">
         <header class="bg-white shadow p-4 mb-4 flex items-center justify-between">
-          <nav class="flex gap-4">
-            <a class="text-blue-500 underline" href="/">Home</a>
-            <a class="text-blue-500 underline" href="/admin">Admin</a>
-            <a class="text-blue-500 underline" href="/chat">Chat</a>
-          </nav>
-          <div class="flex items-center ml-auto">
+          <div class="flex items-center">
             <img src="${LOGO_URL}" alt="Logo" class="h-12 mr-3" />
             <span class="text-xl font-bold">RAG Chatbot</span>
           </div>
+          <nav class="flex gap-4 ml-auto">
+            <button class="nav-btn" onclick="location.href='/'">Home</button>
+            <button class="nav-btn" onclick="location.href='/admin'">Admin</button>
+            <button class="nav-btn" onclick="location.href='/chat'">Chat</button>
+          </nav>
         </header>
         <section class="min-h-screen w-full flex flex-col px-2 py-4">
           <div class="flex-1 flex flex-col w-full">${content}</div>
