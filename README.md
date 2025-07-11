@@ -28,7 +28,7 @@ Telegram chat history from the bot is saved to `chathistory.json` and can be vie
    You can copy `.env.example` as a starting point and fill in your keys.
    The `OPENAI_API_KEY` is required for generating embeddings and chatting with the OpenAI API.
    The `VIBER_AUTH_TOKEN` and `VIBER_WEBHOOK_URL` are used to configure the Viber webhook integration.
-   Telegram bot tokens are configured per agent in the Admin page.
+   Telegram bot tokens can be set when creating or editing an agent in the Admin page.
 
 3. Start the server:
    ```bash
