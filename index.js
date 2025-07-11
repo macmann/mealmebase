@@ -229,9 +229,9 @@ function adminHtml(agent) {
             <label class="block font-semibold mb-1">Name</label>
             <input class="w-full border rounded px-3 py-2" id="name" value="${agent.name}" />
           </div>
-          <label class="block font-semibold mb-1">Instruction</label>
-          <div class="mb-8">
-            <div id="instruction-editor" class="h-40 w-full border rounded"></div>
+          <div class="w-full">
+            <label class="block font-semibold mb-1" for="instruction">Instruction</label>
+            <textarea id="instruction" class="w-full h-40 border rounded p-2">${esc(agent.instruction)}</textarea>
           </div>
           <div class="w-full">
             <label class="block font-semibold mb-1">Temperature</label>
@@ -274,22 +274,12 @@ function adminHtml(agent) {
       ${historySections || '<p>No history yet</p>'}
     </div>
     <style>
-      #instruction-editor, .ql-container, .ql-editor {
-        width: 100% !important;
-        min-width: 0 !important;
-        box-sizing: border-box;
-      }
-      .ql-container { min-height: 8rem; }
+      #instruction { width: 100%; box-sizing: border-box; }
       .mb-8 { margin-bottom: 2rem !important; }
       .hidden { display: none; }
     </style>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.min.js"></script>
-    <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
-    <script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
     <script>
-      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.worker.min.js';
-      const quill = new Quill('#instruction-editor', { theme: 'snow' });
-      quill.root.innerHTML = ${JSON.stringify(agent.instruction)};
+      const instructionEl = document.getElementById('instruction');
       document.getElementById('tab-settings').addEventListener('click', () => {
         document.getElementById('settings-pane').classList.remove('hidden');
         document.getElementById('history-pane').classList.add('hidden');
@@ -305,17 +295,6 @@ function adminHtml(agent) {
       });
       async function fileToText(file) {
         if (!file) return '';
-        if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
-          const typedArray = new Uint8Array(await file.arrayBuffer());
-          const pdf = await pdfjsLib.getDocument(typedArray).promise;
-          let txt = '';
-          for (let i = 1; i <= pdf.numPages; i++) {
-            const page = await pdf.getPage(i);
-            const content = await page.getTextContent();
-            txt += content.items.map(it => it.str).join(' ') + '\n';
-          }
-          return txt;
-        }
         if (file.type === 'application/json' || file.name.toLowerCase().endsWith('.json')) {
           const raw = await file.text();
           try {
@@ -341,7 +320,7 @@ function adminHtml(agent) {
         }
         const body = {
           name: document.getElementById('name').value.trim(),
-          instruction: quill.root.innerHTML,
+          instruction: instructionEl.value,
           temperature: parseFloat(document.getElementById('temperature').value),
           topP: parseFloat(document.getElementById('topP').value),
           topK: parseInt(document.getElementById('topK').value, 10),
