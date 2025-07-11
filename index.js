@@ -111,7 +111,7 @@ async function searchDocs(collection, query, topK) {
       with_payload: true,
     });
     console.log('Search returned', results.length, 'results');
-    return results.map((r) => r.payload.text).join('\n');
+    return results.map((r) => r.payload.text).join('\\n');
   } catch (e) {
     console.error('Search error:', e);
     return '';
