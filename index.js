@@ -617,7 +617,7 @@ if (process.env.TELEGRAM_BOT_TOKEN) {
   });
 
 
-  async function startBot() {
+  async function startBot(attempt = 0) {
     try {
       // Ensure any webhook from a previous instance is removed
       await bot.deleteWebHook({ drop_pending_updates: true });
@@ -625,6 +625,14 @@ if (process.env.TELEGRAM_BOT_TOKEN) {
       console.log('Telegram bot started');
     } catch (e) {
       console.error('Failed to start Telegram bot:', e);
+      if (
+        attempt < 5 &&
+        (e?.response?.statusCode === 409 || String(e).includes('409'))
+      ) {
+        const delay = 5000;
+        console.log(`Retrying Telegram bot start in ${delay / 1000}s...`);
+        setTimeout(() => startBot(attempt + 1), delay);
+      }
     }
   }
 
