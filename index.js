@@ -111,7 +111,7 @@ async function searchDocs(collection, query, topK) {
       with_payload: true,
     });
     console.log('Search returned', results.length, 'results');
-    return results.map((r) => r.payload.text).join('\n');
+    return results.map((r) => r.payload.text).join('\\n');
   } catch (e) {
     console.error('Search error:', e);
     return '';
@@ -208,11 +208,21 @@ function pageTemplate(content) {
   `;
 }
 
+
 function adminHtml(agent) {
+  const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const threads = Object.entries(dashboardHistory).filter(([k]) => k.endsWith('-' + agent.id));
+  const historySections = threads.map(([tid, msgs]) => {
+    const msgHtml = msgs.map(m => `<div class="${m.role === 'user' ? 'bg-blue-100' : 'bg-green-100'} rounded p-2 mb-1"><strong>${m.role === 'user' ? 'User' : 'Bot'}:</strong> <span class="md">${esc(m.text)}</span></div>`).join('');
+    return `<div class="border rounded p-4 mb-4"><h2 class="font-semibold mb-2">Thread ${tid}</h2>${msgHtml}</div>`;
+  }).join('');
   return pageTemplate(`
-    <h1 class="text-3xl font-bold text-center mb-2">Admin & Test - ${agent.name}</h1>
-    <p class="text-center mb-4"><a class="text-blue-500 underline" href="/history">View Chat History</a></p>
-    <div class="flex flex-col md:flex-row gap-6 flex-1 w-full">
+    <h1 class="text-3xl font-bold text-center mb-2">Admin - ${agent.name}</h1>
+    <div class="flex gap-2 mb-4 justify-center">
+      <button id="tab-settings" class="tab bg-blue-500 text-white px-3 py-1 rounded">Settings</button>
+      <button id="tab-history" class="tab bg-gray-200 px-3 py-1 rounded">Chat History</button>
+    </div>
+    <div id="settings-pane" class="tab-content flex flex-col md:flex-row gap-6 flex-1 w-full">
       <div class="bg-white p-6 rounded shadow flex-1 flex flex-col min-w-[340px] md:min-w-[380px] w-full">
         <form id="upload-form" class="space-y-4 flex-1 flex flex-col w-full">
           <label class="block font-semibold mb-1">Instruction</label>
@@ -256,28 +266,39 @@ function adminHtml(agent) {
         </div>
       </div>
     </div>
+    <div id="history-pane" class="tab-content hidden">
+      ${historySections || '<p>No history yet</p>'}
+    </div>
     <style>
       #instruction-editor, .ql-container, .ql-editor {
         width: 100% !important;
         min-width: 0 !important;
         box-sizing: border-box;
       }
-      .ql-container {
-        min-height: 8rem;
-      }
-      .mb-8 {
-        margin-bottom: 2rem !important;
-      }
+      .ql-container { min-height: 8rem; }
+      .mb-8 { margin-bottom: 2rem !important; }
+      .hidden { display: none; }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.min.js"></script>
     <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
     <script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
     <script>
-      pdfjsLib.GlobalWorkerOptions.workerSrc =
-        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.worker.min.js';
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.worker.min.js';
       const quill = new Quill('#instruction-editor', { theme: 'snow' });
       quill.root.innerHTML = ${JSON.stringify(agent.instruction)};
-
+      document.getElementById('tab-settings').addEventListener('click', () => {
+        document.getElementById('settings-pane').classList.remove('hidden');
+        document.getElementById('history-pane').classList.add('hidden');
+        document.getElementById('tab-settings').classList.add('bg-blue-500','text-white');
+        document.getElementById('tab-history').classList.remove('bg-blue-500','text-white');
+      });
+      document.getElementById('tab-history').addEventListener('click', () => {
+        document.getElementById('history-pane').classList.remove('hidden');
+        document.getElementById('settings-pane').classList.add('hidden');
+        document.getElementById('tab-history').classList.add('bg-blue-500','text-white');
+        document.getElementById('tab-settings').classList.remove('bg-blue-500','text-white');
+        document.querySelectorAll('.md').forEach(el => { el.innerHTML = marked.parse(el.textContent); });
+      });
       async function fileToText(file) {
         if (!file) return '';
         if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
@@ -306,7 +327,6 @@ function adminHtml(agent) {
         }
         return await file.text();
       }
-
       document.getElementById('upload-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const files = [...document.getElementById('file').files];
@@ -331,7 +351,6 @@ function adminHtml(agent) {
         document.getElementById('status').innerText = res.ok ? 'Uploaded!' : 'Upload failed';
         if (res.ok) loadDocs();
       });
-
       function appendMessage(role, text) {
         const cls = role === 'user' ? 'bg-blue-100' : 'bg-green-100';
         const chat = document.getElementById('messages');
@@ -339,7 +358,6 @@ function adminHtml(agent) {
         chat.innerHTML += '<div class="' + cls + ' rounded p-2"><strong>' + (role === 'user' ? 'You' : 'Bot') + ':</strong> ' + html + '</div>';
         chat.scrollTop = chat.scrollHeight;
       }
-
       async function sendMessage() {
         const msgEl = document.getElementById('msg');
         const msg = msgEl.value.trim();
@@ -347,11 +365,7 @@ function adminHtml(agent) {
         msgEl.value = '';
         appendMessage('user', msg);
         try {
-        const res = await fetch('/chat/${agent.id}', {
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ message: msg })
-          });
+          const res = await fetch('/chat/${agent.id}', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ message: msg }) });
           const data = await res.json();
           if (!res.ok || data.error) throw new Error(data.error);
           appendMessage('bot', data.answer);
@@ -359,10 +373,8 @@ function adminHtml(agent) {
           appendMessage('bot', 'Failed to generate answer');
         }
       }
-
       document.getElementById('send').addEventListener('click', sendMessage);
       document.getElementById('msg').addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); sendMessage(); }});
-
       async function loadDocs() {
         const res = await fetch('/docs/${agent.id}');
         if (!res.ok) return;
@@ -372,12 +384,10 @@ function adminHtml(agent) {
         docs.forEach(d => {
           const div = document.createElement('div');
           div.className = 'flex justify-between items-center border rounded p-2';
-          div.innerHTML = '<span>' + d.name + '</span>' +
-            '<button data-id="' + d.id + '" class="delete bg-red-500 text-white px-2 rounded">Delete</button>';
+          div.innerHTML = '<span>' + d.name + '</span>' + '<button data-id="' + d.id + '" class="delete bg-red-500 text-white px-2 rounded">Delete</button>';
           container.appendChild(div);
         });
       }
-
       document.getElementById('docs').addEventListener('click', async (e) => {
         if (e.target.classList.contains('delete')) {
           const id = e.target.getAttribute('data-id');
@@ -385,12 +395,10 @@ function adminHtml(agent) {
           if (res.ok) loadDocs();
         }
       });
-
       loadDocs();
     </script>
   `);
 }
-
 function chatHtml(agent) {
   return pageTemplate(`
     <h1 class="text-3xl font-bold text-center mb-8">Chatbot - ${agent.name}</h1>
@@ -539,9 +547,24 @@ function chatPanelHtml() {
         listEl.innerHTML = '';
         agents.forEach(a => {
           const div = document.createElement('div');
-          div.textContent = a.name;
-          div.className = 'agent-item cursor-pointer p-2 rounded ' + (a.id === current ? 'bg-blue-100' : 'bg-gray-100');
-          div.addEventListener('click', () => { current = a.id; clearMessages(); renderAgents(); document.getElementById('agent-name').textContent = a.name; });
+          div.className = 'agent-item flex justify-between items-center cursor-pointer p-2 rounded ' + (a.id === current ? 'bg-blue-100' : 'bg-gray-100');
+          const nameSpan = document.createElement('span');
+          nameSpan.textContent = a.name;
+          nameSpan.addEventListener('click', () => {
+            current = a.id;
+            clearMessages();
+            renderAgents();
+            document.getElementById('agent-name').textContent = a.name;
+          });
+          const settings = document.createElement('button');
+          settings.innerHTML = '&#9881;';
+          settings.className = 'settings text-gray-500';
+          settings.addEventListener('click', (e) => {
+            e.stopPropagation();
+            window.location.href = '/admin/' + a.id;
+          });
+          div.appendChild(nameSpan);
+          div.appendChild(settings);
           listEl.appendChild(div);
         });
       }
