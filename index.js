@@ -4,15 +4,50 @@ const axios = require('axios');
 const { CohereEmbeddings } = require('@langchain/cohere');
 const { QdrantClient } = require('@qdrant/js-client-rest');
 const fs = require('fs');
+const crypto = require('crypto');
+const cookie = require('cookie');
 
 const LOGO_URL = process.env.LOGO_URL || 'https://ibb.co/HDy3fYZ8';
 
 const app = express();
 // Increase body size limit to handle large document uploads
 app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ extended: false }));
+
+const sessions = {};
+
+app.use((req, res, next) => {
+  const sid = cookie.parse(req.headers.cookie || '').sid;
+  if (sid && sessions[sid] && users[sessions[sid]]) {
+    req.user = { email: sessions[sid], isAdmin: users[sessions[sid]].isAdmin };
+    req.sessionId = sid;
+  }
+  next();
+});
+
+function hashPassword(pw) {
+  return crypto.createHash('sha256').update(pw).digest('hex');
+}
 
 const AGENTS_FILE = 'agents.json';
 let agents = {};
+
+const USERS_FILE = 'users.json';
+let users = {};
+try {
+  users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
+} catch {
+  users = {};
+}
+if (!users['admin@mealme.com']) {
+  users['admin@mealme.com'] = { password: hashPassword('admin'), isAdmin: true };
+  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+}
+function saveUsers() {
+  fs.promises
+    .writeFile(USERS_FILE, JSON.stringify(users, null, 2))
+    .catch((e) => console.error('Users save error:', e));
+}
 
 try {
   agents = JSON.parse(fs.readFileSync(AGENTS_FILE, 'utf8'));
@@ -62,6 +97,22 @@ function addDashboardMessage(sessionId, role, text) {
     dashboardHistory[sessionId] = dashboardHistory[sessionId].slice(-5);
   }
 }
+
+function requireLogin(req, res, next) {
+  if (!req.user) {
+    if (req.method === 'GET') return res.redirect('/login');
+    return res.status(401).json({ error: 'Login required' });
+  }
+  next();
+}
+
+app.use((req, res, next) => {
+  if (!req.user && req.path !== '/login' && !req.path.startsWith('/viber/webhook')) {
+    if (req.method === 'GET') return res.redirect('/login');
+    return res.status(401).json({ error: 'Login required' });
+  }
+  next();
+});
 
 // --------- Qdrant Client Setup ---------
 const qdrant = new QdrantClient({
@@ -471,6 +522,66 @@ function homeHtml() {
   `);
 }
 
+function loginHtml(error = '') {
+  return pageTemplate(`
+    <h1 class="text-3xl font-bold mb-4 text-center">Login</h1>
+    <form method="POST" class="max-w-sm mx-auto space-y-4">
+      ${error ? `<p class="text-red-500">${error}</p>` : ''}
+      <input class="w-full border px-3 py-2" name="email" placeholder="Email" />
+      <input class="w-full border px-3 py-2" name="password" type="password" placeholder="Password" />
+      <button class="bg-blue-500 text-white px-4 py-2 rounded w-full" type="submit">Login</button>
+    </form>
+  `);
+}
+
+function usersHtml() {
+  const userList = Object.entries(users).map(([email, u]) =>
+    `<div class="flex justify-between items-center border rounded p-2">
+      <span>${email}</span>
+      ${email !== 'admin@mealme.com' ? `<button data-email="${email}" class="del bg-red-500 text-white px-2 rounded">Delete</button>` : ''}
+    </div>`
+  ).join('');
+  return pageTemplate(`
+    <h1 class="text-3xl font-bold mb-4 text-center">Manage Users</h1>
+    <div class="space-y-2 mb-4">${userList || '<p>No users</p>'}</div>
+    <form id="createForm" class="flex flex-col gap-2 max-w-sm mx-auto">
+      <input class="border px-2 py-1" name="email" placeholder="Email" />
+      <input class="border px-2 py-1" name="password" type="password" placeholder="Password" />
+      <label class="inline-flex items-center"><input type="checkbox" name="isAdmin" class="mr-2" />Admin</label>
+      <button class="bg-blue-500 text-white px-3 py-1 rounded" type="submit">Create</button>
+    </form>
+    <p class="text-center mt-4"><a class="text-blue-500 underline" href="/">Home</a></p>
+    <script>
+      document.getElementById('createForm').addEventListener('submit', async e => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const res = await fetch('/users', { method:'POST', body: new URLSearchParams(fd) });
+        if(res.ok) location.reload();
+      });
+      document.querySelectorAll('.del').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const email = btn.getAttribute('data-email');
+          if(!confirm('Delete ' + email + '?')) return;
+          const res = await fetch('/users/' + encodeURIComponent(email), { method:'DELETE' });
+          if(res.ok) location.reload();
+        });
+      });
+    </script>
+  `);
+}
+
+function changePasswordHtml(msg = '') {
+  return pageTemplate(`
+    <h1 class="text-3xl font-bold mb-4 text-center">Change Password</h1>
+    ${msg ? `<p class="text-green-600 text-center">${msg}</p>` : ''}
+    <form method="POST" class="max-w-sm mx-auto space-y-4">
+      <input class="w-full border px-3 py-2" name="password" type="password" placeholder="New password" />
+      <button class="bg-blue-500 text-white px-4 py-2 rounded w-full" type="submit">Change</button>
+    </form>
+    <p class="text-center mt-4"><a class="text-blue-500 underline" href="/">Home</a></p>
+  `);
+}
+
 function adminListHtml() {
   const list = Object.values(agents).map(a => `
     <div class="flex justify-between items-center border rounded p-2">
@@ -610,6 +721,65 @@ function userHistoryHtml(id) {
 }
 
 // ---- Routes ----
+app.get('/login', (req, res) => {
+  if (req.user) return res.redirect('/');
+  res.send(loginHtml(req.query.error));
+});
+
+app.post('/login', (req, res) => {
+  const { email, password } = req.body;
+  const user = users[email];
+  if (user && user.password === hashPassword(password)) {
+    const sid = crypto.randomBytes(16).toString('hex');
+    sessions[sid] = email;
+    res.setHeader('Set-Cookie', cookie.serialize('sid', sid, { httpOnly: true, path: '/' }));
+    return res.redirect('/');
+  }
+  res.redirect('/login?error=Invalid%20credentials');
+});
+
+app.get('/logout', (req, res) => {
+  if (req.sessionId) delete sessions[req.sessionId];
+  res.setHeader('Set-Cookie', cookie.serialize('sid', '', { path: '/', expires: new Date(0) }));
+  res.redirect('/login');
+});
+
+app.get('/change-password', requireLogin, (req, res) => {
+  res.send(changePasswordHtml());
+});
+
+app.post('/change-password', requireLogin, (req, res) => {
+  const { password } = req.body;
+  if (!password) return res.redirect('/change-password');
+  const email = req.user.email;
+  users[email].password = hashPassword(password);
+  saveUsers();
+  res.send(changePasswordHtml('Password updated'));
+});
+
+app.get('/users', requireLogin, (req, res) => {
+  if (!req.user.isAdmin) return res.status(403).send('Forbidden');
+  res.send(usersHtml());
+});
+
+app.post('/users', requireLogin, (req, res) => {
+  if (!req.user.isAdmin) return res.status(403).send('Forbidden');
+  const { email, password, isAdmin } = req.body;
+  if (!email || !password || users[email]) return res.status(400).send('Invalid');
+  users[email] = { password: hashPassword(password), isAdmin: Boolean(isAdmin) };
+  saveUsers();
+  res.sendStatus(200);
+});
+
+app.delete('/users/:email', requireLogin, (req, res) => {
+  if (!req.user.isAdmin) return res.status(403).send('Forbidden');
+  const email = decodeURIComponent(req.params.email);
+  if (email === 'admin@mealme.com') return res.status(400).send('Cannot delete');
+  delete users[email];
+  saveUsers();
+  res.sendStatus(200);
+});
+
 app.get('/agents', (req, res) => {
   res.send(adminListHtml());
 });
