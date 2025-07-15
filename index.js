@@ -219,7 +219,7 @@ async function askLLM(agent, context, question, history = []) {
 }
 
 // ----- UI Layout -----
-function pageTemplate(content) {
+function pageTemplate(content, showNav = true) {
   return `
     <!DOCTYPE html>
     <html lang="en">
@@ -245,11 +245,14 @@ function pageTemplate(content) {
             <img src="${LOGO_URL}" alt="Logo" class="h-12 mr-3" />
             <span class="text-xl font-bold">dot.Me Platform</span>
           </div>
+          ${showNav ? `
           <nav class="flex gap-4 ml-auto">
             <button class="nav-btn" onclick="location.href='/'">Home</button>
             <button class="nav-btn" onclick="location.href='/admin'">Admin</button>
             <button class="nav-btn" onclick="location.href='/chat'">Chat</button>
+            <button class="nav-btn" onclick="location.href='/logout'">Logout</button>
           </nav>
+          ` : ''}
         </header>
         <section class="min-h-screen w-full flex flex-col px-2 py-4">
           <div class="flex-1 flex flex-col w-full">${content}</div>
@@ -531,7 +534,7 @@ function loginHtml(error = '') {
       <input class="w-full border px-3 py-2" name="password" type="password" placeholder="Password" />
       <button class="bg-blue-500 text-white px-4 py-2 rounded w-full" type="submit">Login</button>
     </form>
-  `);
+  `, false);
 }
 
 function usersHtml() {
